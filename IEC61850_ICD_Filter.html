@@ -1,0 +1,2143 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IEC 61850 ICD Tag Filter</title>
+<!--
+  IEC 61850 ICD Tag Filter — 單一 HTML、完全離線、無外部相依。
+  模組（皆在本檔 <script> 內）：
+    I18N      : 中文 / English 語系字典與 t()
+    Util      : 共用小工具
+    Excel     : .xlsx (ZIP + OOXML) 與 .xls (OLE2/CFB + BIFF8) 讀取器（原生實作，無第三方套件）
+    SCL       : IEC 61850-6 SCL 解析，建立實例化資料模型（IED/LD/LN/DO/SDO/DA/BDA + FC）
+    Matcher   : Excel 路徑 → 依 ICD 資料模型做結構化解析比對
+    Engine    : Mark-and-Sweep 白名單篩選、ReportControl/DataSet 處理、型別精簡/複製、輸出 ICD
+    Validator : 結構/參照驗證（非 XSD 驗證）
+    UI        : 虛擬化樹狀圖、表格、統計、匯出
+-->
+<style>
+:root{--bg:#f3f4f6;--panel:#fff;--bd:#d3d7de;--tx:#1d2330;--mut:#667085;--acc:#1f5fbf;
+--keep:#0f7a35;--keepbg:#e3f3e8;--dep:#8a6400;--depbg:#fff3c4;--rem:#8d939c;--err:#c5221f;--errbg:#fde7e5;}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:13px/1.45 "Segoe UI","Microsoft JhengHei",Arial,sans-serif;color:var(--tx);background:var(--bg);display:flex;flex-direction:column}
+header{background:#1d2330;color:#fff;padding:7px 14px;display:flex;align-items:center;gap:14px;flex:none}
+header h1{font-size:15px;margin:0;font-weight:600}
+header .sub{color:#aeb6c4;font-size:12px}
+header .lang{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:#aeb6c4}
+header select{font:inherit;padding:2px 4px;border-radius:3px;border:1px solid #556;background:#2a3244;color:#fff}
+.layout{flex:1;display:flex;min-height:0}
+aside{width:380px;min-width:320px;overflow:auto;border-right:1px solid var(--bd);background:var(--panel);padding:10px}
+main{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--panel)}
+fieldset{border:1px solid var(--bd);border-radius:4px;margin:0 0 10px;padding:6px 10px 8px}
+legend{font-weight:600;padding:0 4px}
+.frow{display:flex;align-items:center;gap:6px;margin:4px 0}
+.frow > .lb{width:100px;flex:none;color:var(--mut)}
+.frow select,.frow input[type=text],.frow input[type=number]{flex:1;min-width:0}
+select,input[type=text],input[type=number],input[type=search]{font:inherit;padding:3px 5px;border:1px solid var(--bd);border-radius:3px;background:#fff}
+label.chk{display:flex;gap:6px;align-items:flex-start;margin:3px 0}
+label.chk input{margin-top:3px}
+button{font:inherit;padding:4px 10px;border:1px solid var(--bd);border-radius:3px;background:#fff;cursor:pointer}
+button:hover:not(:disabled){background:#eef2f8}
+button.primary{background:var(--acc);border-color:var(--acc);color:#fff}
+button.primary:hover:not(:disabled){background:#174c9b}
+button:disabled{opacity:.45;cursor:not-allowed}
+.status{font-size:12px;color:var(--mut);margin-top:3px;word-break:break-all}
+.status.ok{color:var(--keep)}.status.err{color:var(--err)}.status.warn{color:var(--dep)}
+.hint{font-size:11.5px;color:var(--mut)}
+.preview{font:12px Consolas,monospace;background:#f7f8fa;border:1px solid var(--bd);border-radius:3px;max-height:110px;overflow:auto;padding:3px 6px;margin-top:4px;white-space:pre}
+.rcblist{border:1px solid var(--bd);border-radius:3px;max-height:170px;overflow:auto;padding:2px 6px;margin:4px 0;font-size:12px;background:#fafbfc}
+.rcblist label{display:flex;gap:5px;align-items:flex-start;margin:2px 0}
+.rcblist label input{margin-top:2px}
+.rcblist .rk{font-weight:600}
+.rcbwarn{font-size:11.5px;color:var(--dep);margin:2px 0 4px}
+table.stats{width:100%;border-collapse:collapse;font-size:12.5px}
+table.stats td{padding:2px 4px;border-bottom:1px solid #eef0f3}
+table.stats td.v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+table.stats tr.sec td{font-weight:600;color:var(--mut);padding-top:7px;border-bottom:1px solid var(--bd)}
+.c-keep{color:var(--keep)}.c-dep{color:var(--dep)}.c-rem{color:var(--rem)}.c-err{color:var(--err)}
+.btncol{display:flex;flex-direction:column;gap:6px}
+.dlmsg{font-size:12px;margin-top:4px}
+.tabs{display:flex;border-bottom:1px solid var(--bd);background:#f7f8fa;flex:none}
+.tabs button{border:none;border-right:1px solid var(--bd);border-radius:0;background:transparent;padding:7px 14px}
+.tabs button.on{background:var(--panel);font-weight:600;box-shadow:inset 0 -2px 0 var(--acc)}
+.tabs .cnt{display:inline-block;min-width:18px;padding:0 5px;border-radius:9px;background:#e4e7ec;font-size:11px;margin-left:4px;text-align:center}
+.tabs .cnt.e{background:var(--errbg);color:var(--err)}
+.pane{flex:1;display:none;flex-direction:column;min-height:0}
+.pane.on{display:flex}
+.toolbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:6px 8px;border-bottom:1px solid var(--bd);flex:none}
+.toolbar input[type=search]{width:260px}
+.legend{display:flex;gap:10px;font-size:12px;margin-left:auto}
+.legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.lg-keep::before{background:var(--keep)}.lg-dep::before{background:#e0b400}.lg-rem::before{background:#c4c8cf}.lg-err::before{background:var(--err)}
+.vlist{flex:1;overflow:auto;position:relative;min-height:0}
+.vinner{position:relative}
+.vrow{position:absolute;left:0;right:0;height:22px;white-space:nowrap;display:flex;align-items:center;padding-right:8px}
+.tree .vrow{cursor:default}
+.tree .vrow:hover{background:#f1f4f9}
+.tree .vrow.sel{background:#dde8fb}
+.caret{display:inline-block;width:16px;text-align:center;color:#555;cursor:pointer;flex:none;user-select:none}
+.kind{font-size:10.5px;color:#fff;background:#8792a2;border-radius:3px;padding:0 4px;margin-right:5px;flex:none}
+.k-IED{background:#3b4a63}.k-LD{background:#566c8f}.k-LN{background:#3f7cac}.k-FC{background:#7a5ea8}.k-DO{background:#2f8f83}.k-SDO{background:#3f9f93}.k-DA{background:#7d8a3a}.k-BDA{background:#99a35a}
+.nm{flex:none}
+.meta{color:var(--mut);font-size:11.5px;margin-left:8px;overflow:hidden;text-overflow:ellipsis}
+.cnts{margin-left:auto;font-size:11.5px;font-variant-numeric:tabular-nums;padding-left:10px;flex:none}
+.s-keep .nm{color:var(--keep);font-weight:600}
+.s-dep .nm{color:var(--dep);font-weight:600}
+.s-rem .nm{color:var(--rem);text-decoration:line-through}
+.s-err .nm{color:var(--err);font-weight:600}
+.s-keep.leaf{background:var(--keepbg)}.s-dep.leaf{background:var(--depbg)}.s-err.leaf{background:var(--errbg)}
+.tree .vrow.leaf.sel{background:#dde8fb}
+.details{flex:none;height:150px;overflow:auto;border-top:1px solid var(--bd);padding:6px 10px;font-size:12.5px;background:#fafbfc}
+.details code{font:12px Consolas,monospace;background:#eef0f4;padding:0 3px;border-radius:2px}
+.thead{display:flex;font-weight:600;background:#f2f4f7;border-bottom:1px solid var(--bd);flex:none;padding-right:14px}
+.thead div,.tbl .vrow div{padding:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tbl .vrow{border-bottom:1px solid #f0f1f4}
+.tbl .vrow:hover{background:#f6f8fb}
+.badge{display:inline-block;padding:0 6px;border-radius:3px;font-size:11.5px;font-weight:600}
+.b-matched{background:var(--keepbg);color:var(--keep)}.b-ambiguous{background:var(--depbg);color:var(--dep)}
+.b-unmatched,.b-invalid,.b-error{background:var(--errbg);color:var(--err)}.b-duplicate,.b-warning{background:#eceef2;color:#555}
+.b-new{background:var(--errbg);color:var(--err)}.b-pre{background:#eceef2;color:#555}
+.empty{padding:30px;color:var(--mut);text-align:center}
+.doc{overflow:auto;padding:14px 22px;max-width:1000px;line-height:1.6}
+.doc h2{font-size:16px;border-bottom:1px solid var(--bd);padding-bottom:3px;margin-top:22px}
+.doc code{font:12px Consolas,monospace;background:#eef0f4;padding:0 3px;border-radius:2px}
+.doc table{border-collapse:collapse;font-size:12.5px}.doc td,.doc th{border:1px solid var(--bd);padding:3px 7px;text-align:left;vertical-align:top}
+.warnbox{border:1px solid #e5c55a;background:#fffbea;padding:6px 10px;border-radius:4px;font-size:12px;margin:6px 0}
+.busy{position:fixed;inset:0;background:rgba(255,255,255,.55);display:none;align-items:center;justify-content:center;font-size:15px;z-index:10}
+.busy.on{display:flex}
+</style>
+</head>
+<body>
+<header>
+  <h1>IEC 61850 ICD Tag Filter</h1>
+  <span class="sub" data-i18n="app.sub"></span>
+  <span class="lang">🌐 <select id="selLang"><option value="zh">中文</option><option value="en">English</option></select></span>
+</header>
+<div class="layout">
+<aside>
+  <fieldset>
+    <legend data-i18n="f.icd"></legend>
+    <input type="file" id="fIcd" accept=".icd,.cid,.iid,.scd,.xml">
+    <div class="status" id="icdStatus"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="f.xl"></legend>
+    <input type="file" id="fXl" accept=".xlsx,.xls">
+    <div class="status" id="xlStatus"></div>
+    <div class="frow"><span class="lb" data-i18n="lb.sheet"></span><select id="selSheet" disabled></select></div>
+    <div class="frow"><span class="lb" data-i18n="lb.col"></span><select id="selCol" disabled></select></div>
+    <div class="frow"><span class="lb" data-i18n="lb.start"></span><input type="number" id="inStart" min="1" value="2" disabled></div>
+    <div class="frow"><span class="lb" data-i18n="lb.prefix"></span><input type="text" id="inPrefix" data-i18n-ph="ph.prefix" disabled></div>
+    <div class="preview" id="xlPreview"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="f.opt"></legend>
+    <div class="frow"><span class="lb" data-i18n="lb.gran"></span>
+      <select id="optGran">
+        <option value="da" selected data-i18n="gran.da"></option>
+        <option value="leaf" data-i18n="gran.leaf"></option>
+        <option value="dofc" data-i18n="gran.dofc"></option>
+        <option value="do" data-i18n="gran.do"></option>
+      </select></div>
+    <div class="frow"><span class="lb">ReportControl</span>
+      <select id="optRcb">
+        <option value="auto" selected data-i18n="rcb.auto"></option>
+        <option value="keepAll" data-i18n="rcb.keepAll"></option>
+        <option value="none" data-i18n="rcb.none"></option>
+        <option value="custom" data-i18n="rcb.custom"></option>
+      </select></div>
+    <div class="rcbwarn" id="rcbWarn"></div>
+    <div class="rcblist" id="rcbList"></div>
+    <div class="frow"><span class="lb" data-i18n="lb.amb"></span>
+      <select id="optAmb">
+        <option value="keep" selected data-i18n="amb.keep"></option>
+        <option value="skip" data-i18n="amb.skip"></option>
+      </select></div>
+    <label class="chk"><input type="checkbox" id="optCtl" checked><span data-i18n="opt.ctl"></span></label>
+    <label class="chk"><input type="checkbox" id="optQt"><span data-i18n="opt.qt"></span></label>
+    <label class="chk"><input type="checkbox" id="optSgcb"><span data-i18n="opt.sgcb"></span></label>
+    <label class="chk"><input type="checkbox" id="optLd" checked><span data-i18n="opt.ld"></span></label>
+    <label class="chk"><input type="checkbox" id="optTypes" checked><span data-i18n="opt.types"></span></label>
+    <label class="chk"><input type="checkbox" id="optReuse" checked><span data-i18n="opt.reuse"></span></label>
+    <label class="chk"><input type="checkbox" id="optHist"><span data-i18n="opt.hist"></span></label>
+    <button id="btnRun" class="primary" disabled style="margin-top:6px" data-i18n="btn.run"></button>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="f.stats"></legend>
+    <table class="stats" id="statsTbl"></table>
+  </fieldset>
+
+  <fieldset>
+    <legend data-i18n="f.export"></legend>
+    <div class="btncol">
+      <button id="btnDl" class="primary" disabled>Download Filtered ICD</button>
+      <div class="dlmsg" id="dlMsg"></div>
+      <button id="btnCsvMatch" disabled data-i18n="btn.csvMatch"></button>
+      <button id="btnCsvTags" disabled data-i18n="btn.csvTags"></button>
+      <button id="btnCsvVal" disabled data-i18n="btn.csvVal"></button>
+    </div>
+    <div class="warnbox" data-i18n-html="warn.scope"></div>
+  </fieldset>
+</aside>
+
+<main>
+  <div class="tabs" id="tabs">
+    <button data-tab="tree" class="on"><span data-i18n="tab.tree"></span></button>
+    <button data-tab="match"><span data-i18n="tab.match"></span><span class="cnt" id="cntMatch">0</span></button>
+    <button data-tab="dep"><span data-i18n="tab.dep"></span><span class="cnt" id="cntDep">0</span></button>
+    <button data-tab="val"><span data-i18n="tab.val"></span><span class="cnt" id="cntVal">0</span></button>
+    <button data-tab="help"><span data-i18n="tab.help"></span></button>
+  </div>
+
+  <section class="pane on" id="pane-tree">
+    <div class="toolbar">
+      <input type="search" id="treeSearch" data-i18n-ph="ph.treeSearch">
+      <select id="treeFilter">
+        <option value="all" data-i18n="tf.all"></option>
+        <option value="kept" data-i18n="tf.kept"></option>
+        <option value="excel" data-i18n="tf.excel"></option>
+        <option value="dep" data-i18n="tf.dep"></option>
+        <option value="rem" data-i18n="tf.rem"></option>
+        <option value="err" data-i18n="tf.err"></option>
+      </select>
+      <button id="btnExpLN" data-i18n="btn.expLN"></button>
+      <button id="btnCollapse" data-i18n="btn.collapse"></button>
+      <span class="legend"><span class="lg-keep" data-i18n="lg.keep"></span><span class="lg-dep" data-i18n="lg.dep"></span><span class="lg-rem" data-i18n="lg.rem"></span><span class="lg-err" data-i18n="lg.err"></span></span>
+    </div>
+    <div class="vlist tree" id="treeView"></div>
+    <div class="details" id="details"></div>
+  </section>
+
+  <section class="pane" id="pane-match">
+    <div class="toolbar">
+      <select id="matchFilter">
+        <option value="all" data-i18n="mf.all"></option>
+        <option value="matched" data-i18n="mf.matched"></option>
+        <option value="unmatched" data-i18n="mf.unmatched"></option>
+        <option value="ambiguous" data-i18n="mf.ambiguous"></option>
+        <option value="duplicate" data-i18n="mf.duplicate"></option>
+      </select>
+      <input type="search" id="matchSearch" data-i18n-ph="ph.search">
+      <span class="hint" data-i18n="match.hint"></span>
+    </div>
+    <div class="thead"><div style="width:60px" data-i18n="mh.row"></div><div style="width:300px" data-i18n="mh.content"></div><div style="width:90px" data-i18n="mh.status"></div><div style="width:70px" data-i18n="mh.leaf"></div><div style="flex:1" data-i18n="mh.msg"></div></div>
+    <div class="vlist tbl" id="matchView"></div>
+  </section>
+
+  <section class="pane" id="pane-dep">
+    <div class="toolbar"><span class="hint" data-i18n="dep.hint"></span></div>
+    <div id="depSummary" style="padding:6px 10px;flex:none;max-height:180px;overflow:auto"></div>
+    <div class="thead"><div style="width:420px" data-i18n="dh.tag"></div><div style="flex:1" data-i18n="dh.reason"></div></div>
+    <div class="vlist tbl" id="depView"></div>
+  </section>
+
+  <section class="pane" id="pane-val">
+    <div class="toolbar"><span class="hint" data-i18n="val.hint"></span></div>
+    <div class="thead"><div style="width:80px" data-i18n="vh.level"></div><div style="width:90px" data-i18n="vh.src"></div><div style="width:120px" data-i18n="vh.code"></div><div style="flex:1" data-i18n="vh.msg"></div></div>
+    <div class="vlist tbl" id="valView"></div>
+  </section>
+
+  <section class="pane" id="pane-help"><div class="doc" id="helpDoc"></div></section>
+</main>
+</div>
+<div class="busy" id="busy" data-i18n="busy"></div>
+
+<script>
+(function(){
+'use strict';
+
+/* =====================================================================
+ * I18N — 語系字典：key: [中文, English]；參數以 {name} 表示
+ * ===================================================================== */
+const DICT = {
+  'app.sub': ['Whitelist-based Subtractive Filtering · 完全離線 · 不修改原始 ICD · v1.1', 'Whitelist-based Subtractive Filtering · Fully offline · Original ICD never modified · v1.1'],
+  'busy': ['處理中…', 'Processing…'],
+  'notLoaded': ['尚未載入', 'Not loaded'],
+  'f.icd': ['1. ICD 檔案', '1. ICD file'],
+  'f.xl': ['2. Excel I/O List（白名單）', '2. Excel I/O list (whitelist)'],
+  'lb.sheet': ['Worksheet', 'Worksheet'],
+  'lb.col': ['Tag 欄位', 'Tag column'],
+  'lb.start': ['資料起始列', 'First data row'],
+  'lb.prefix': ['路徑前綴', 'Path prefix'],
+  'ph.prefix': ['選填，例如 LD0/', 'Optional, e.g. LD0/'],
+  'f.opt': ['3. 篩選選項', '3. Filter options'],
+  'lb.gran': ['刪減粒度', 'Granularity'],
+  'gran.da': ['DA（保留完整 DA 結構，建議）', 'DA (keep complete DA structures, recommended)'],
+  'gran.leaf': ['Leaf（精細至 BDA）', 'Leaf (down to BDA)'],
+  'gran.dofc': ['DO + 同 FC', 'DO + same FC'],
+  'gran.do': ['完整 DO（所有 FC）', 'Complete DO (all FCs)'],
+  'rcb.auto': ['保留含白名單資料的 Report', 'Keep Reports containing whitelisted data'],
+  'rcb.keepAll': ['保留全部 Report 與 DataSet', 'Keep all Reports and DataSets'],
+  'rcb.none': ['移除全部 Report（Elipse 改用 polling）', 'Remove all Reports (Elipse polls only)'],
+  'rcb.custom': ['自訂：勾選要保留的 Report', 'Custom: tick the Reports to keep'],
+  'rcb.empty': ['此 ICD 沒有 ReportControl', 'This ICD has no ReportControl'],
+  'rcb.wl': ['含白名單', 'has whitelisted data'],
+  'rcb.noWl': ['無白名單', 'no whitelisted data'],
+  'rcb.warn': ['⚠ 已移除 {n} 個 Report：Elipse 無法透過它們接收資料，只能 polling。事件可能延遲或漏失，且失去 IED 端事件時間戳與斷線緩衝 (BRCB)。', '⚠ {n} Report(s) removed: Elipse cannot receive data through them and must poll. Events may be delayed or missed; IED event timestamps and buffering during disconnection (BRCB) are lost.'],
+  'lb.amb': ['歧義路徑', 'Ambiguous paths'],
+  'amb.keep': ['保留所有候選（黃色）', 'Keep all candidates (yellow)'],
+  'amb.skip': ['不保留（僅警告）', 'Do not keep (warning only)'],
+  'opt.ctl': ['控制完整性：保留 CO 時一併保留 Oper/SBOw/Cancel 全結構與 ctlModel', 'Control completeness: when CO is kept, also keep full Oper/SBOw/Cancel and ctlModel'],
+  'opt.qt': ['保留 ST/MX 值的 q、t 兄弟屬性', 'Keep q and t siblings of ST/MX values'],
+  'opt.sgcb': ['移除 SettingControl（Elipse LLN0 的 SP 節點；將無法從 Elipse 切換/讀取定值群組）', 'Remove SettingControl (the SP node under LLN0 in Elipse; setting groups can no longer be switched/read from Elipse)'],
+  'w.sgcb': ['已移除 {n} 個 SettingControl（{list}）：Elipse 不會建立 SP 節點，無法切換定值群組；IED 本身不受影響。', 'Removed {n} SettingControl(s) ({list}): Elipse will not create SP nodes and cannot switch setting groups; the IED itself is unaffected.'],
+  's.sgcb': ['SettingControl（前 → 後）', 'SettingControl (before → after)'],
+  'opt.ld': ['移除沒有保留資料的 LDevice', 'Remove LDevices with no kept data'],
+  'opt.types': ['移除未被參照的 DataTypeTemplates 型別', 'Remove unreferenced DataTypeTemplates types'],
+  'opt.reuse': ['型別僅一種精簡版本時沿用原 id（就地精簡）', 'Reuse the original id when a type has only one reduced variant (in place)'],
+  'opt.hist': ['在 Header/History 加入篩選紀錄 (Hitem)', 'Add a filter record to Header/History (Hitem)'],
+  'btn.run': ['重新分析', 'Re-analyze'],
+  'f.stats': ['4. 結果統計', '4. Results'],
+  'stats.empty': ['載入 ICD 與 Excel 後顯示', 'Shown after loading ICD and Excel'],
+  'f.export': ['5. 匯出', '5. Export'],
+  'btn.csvMatch': ['匯出 Excel 比對報告 (CSV)', 'Export Excel match report (CSV)'],
+  'btn.csvTags': ['匯出 Tag 狀態清單 (CSV)', 'Export tag status list (CSV)'],
+  'btn.csvVal': ['匯出驗證結果 (CSV)', 'Export validation results (CSV)'],
+  'warn.scope': ['驗證範圍：XML 格式 + 本工具實作的 SCL 結構/參照檢查 + 篩選結果回讀比對。<b>未執行</b> IEC 61850 XSD Schema 驗證，<b>不代表</b>已通過 IEC 61850 標準驗證或 Elipse DLL 相容性測試。', 'Validation scope: XML well-formedness + SCL structure/reference checks implemented by this tool + read-back comparison of the result. IEC 61850 XSD schema validation is <b>not</b> performed; this does <b>not</b> mean the file passed IEC 61850 conformance or Elipse DLL compatibility tests.'],
+  'tab.tree': ['ICD 樹狀圖', 'ICD tree'],
+  'tab.match': ['Excel 比對結果', 'Excel match results'],
+  'tab.dep': ['相依保留', 'Dependencies'],
+  'tab.val': ['驗證與警告', 'Validation & warnings'],
+  'tab.help': ['說明與限制', 'Help & limitations'],
+  'ph.treeSearch': ['搜尋 Tag（例如 MMXU1.TotW 或 stVal）', 'Search tags (e.g. MMXU1.TotW or stVal)'],
+  'tf.all': ['顯示全部', 'Show all'],
+  'tf.kept': ['只顯示保留（綠＋黃）', 'Kept only (green + yellow)'],
+  'tf.excel': ['只顯示 Excel 白名單（綠）', 'Excel whitelist only (green)'],
+  'tf.dep': ['只顯示相依保留（黃）', 'Dependencies only (yellow)'],
+  'tf.rem': ['只顯示移除', 'Removed only'],
+  'tf.err': ['只顯示錯誤（紅）', 'Errors only (red)'],
+  'btn.expLN': ['展開至 LN', 'Expand to LN'],
+  'btn.collapse': ['全部收合', 'Collapse all'],
+  'lg.keep': ['Excel 保留', 'Excel kept'],
+  'lg.dep': ['相依/待確認', 'Dependency / check'],
+  'lg.rem': ['移除', 'Removed'],
+  'lg.err': ['錯誤', 'Error'],
+  'tree.empty': ['請先載入 ICD 檔案', 'Load an ICD file first'],
+  'details.hint': ['點選節點查看詳細資訊。樹狀圖為邏輯視圖 IED → LDevice → LN → FC → DO → DA → BDA，非 XML 實際巢狀結構；ReportControl 等控制區塊不在樹狀圖中，請見「ReportControl」選項清單。', 'Click a node for details. The tree is a logical view IED → LDevice → LN → FC → DO → DA → BDA, not the actual XML nesting; control blocks such as ReportControl are not shown in the tree (see the ReportControl option list).'],
+  'mf.all': ['全部', 'All'],
+  'mf.matched': ['已匹配', 'Matched'],
+  'mf.unmatched': ['找不到 / 格式錯誤', 'Not found / invalid'],
+  'mf.ambiguous': ['有歧義', 'Ambiguous'],
+  'mf.duplicate': ['重複', 'Duplicate'],
+  'ph.search': ['搜尋', 'Search'],
+  'match.hint': ['比對採結構化解析（大小寫敏感），模糊比對僅作為提示，不影響保留結果。', 'Matching uses structural resolution (case-sensitive); fuzzy matches are hints only and never decide what is kept.'],
+  'mh.row': ['列', 'Row'], 'mh.content': ['Excel 內容', 'Excel content'], 'mh.status': ['狀態', 'Status'], 'mh.leaf': ['Leaf 數', 'Leaves'], 'mh.msg': ['匹配結果 / 訊息', 'Match result / message'],
+  'dep.hint': ['黃色項目：不在 Excel 白名單中，但因結構相依、DataSet/Report 一致性、刪減粒度或歧義而保留。', 'Yellow items: not in the Excel whitelist but kept because of structural dependencies, DataSet/Report consistency, granularity or ambiguity.'],
+  'dep.none': ['沒有相依保留的 Tag', 'No dependency-kept tags'],
+  'dh.tag': ['Tag (LD/LN.DO.DA [FC])', 'Tag (LD/LN.DO.DA [FC])'], 'dh.reason': ['保留原因', 'Reason kept'],
+  'val.hint': ['「新增」= 篩選後才出現的問題（error 會禁止下載）；「原有」= 原始 ICD 已存在的問題。', '"New" = issues introduced by filtering (errors block download); "Pre-existing" = issues already in the original ICD.'],
+  'vh.level': ['等級', 'Level'], 'vh.src': ['來源', 'Source'], 'vh.code': ['代碼', 'Code'], 'vh.msg': ['說明', 'Message'],
+  'src.new': ['新增', 'New'], 'src.pre': ['原有', 'Pre-existing'],
+  'ms.matched': ['已匹配', 'Matched'], 'ms.unmatched': ['找不到', 'Not found'], 'ms.invalid': ['格式錯誤', 'Invalid'], 'ms.ambiguous': ['有歧義', 'Ambiguous'], 'ms.duplicate': ['重複', 'Duplicate'],
+  'sep': ['：', ': '],
+  /* 檔案狀態 */
+  'icd.ok': ['✔ {name}：IED {ied}、LDevice {ld}、LN {ln}、Leaf Tags {leaf}、DataSet {ds}、ReportControl {rcb}', '✔ {name}: IED {ied}, LDevice {ld}, LN {ln}, leaf tags {leaf}, DataSet {ds}, ReportControl {rcb}'],
+  'icd.errs': ['；原始檔有 {n} 個結構錯誤', '; the original file has {n} structural errors'],
+  'xl.ok': ['✔ {name}（{fmt}，{n} 個工作表）', '✔ {name} ({fmt}, {n} worksheets)'],
+  'pv.more': ['  … 共 {n} 筆非空白', '  … {n} non-empty rows in total'],
+  'pv.none': ['（此欄位在起始列之後沒有資料）', '(no data in this column after the first data row)'],
+  'err.analysis': ['分析失敗：', 'Analysis failed: '],
+  'dl.block': ['✖ 禁止下載：篩選產生 {n} 個結構錯誤，請見「驗證與警告」。', '✖ Download blocked: filtering produced {n} structural errors; see "Validation & warnings".'],
+  'dl.none': ['✖ 沒有任何保留的 Tag，請確認 Excel 欄位與起始列設定。', '✖ No tags are kept; check the Excel column and first data row.'],
+  'dl.ok': ['✔ 結構/參照檢查與回讀比對通過（輸出 {n} 個 Tag）', '✔ Structure/reference checks and read-back comparison passed ({n} tags in output)'],
+  /* 樹狀圖與明細 */
+  'tr.tags': ['{n} tags', '{n} tags'],
+  'st.excel': ['Excel', 'Excel'], 'st.dep': ['相依', 'Dep.'], 'st.rem': ['移除', 'Removed'],
+  'd.fc': ['<b>FC {fc}</b> 於 LN <code>{ln}</code>：共 {t} 個 Tag，Excel 保留 {k}，相依保留 {d}，移除 {r}', '<b>FC {fc}</b> in LN <code>{ln}</code>: {t} tags, Excel kept {k}, dependency kept {d}, removed {r}'],
+  'd.type': ['型別', 'type'],
+  'd.path': ['路徑', 'Path'],
+  'd.err': ['錯誤', 'Error'],
+  'd.status': ['狀態', 'Status'],
+  'd.stExcel': ['Excel 白名單保留', 'Kept (Excel whitelist)'],
+  'd.stDep': ['相依保留', 'Kept (dependency)'],
+  'd.stRem': ['移除', 'Removed'],
+  'd.src': ['Excel 來源列', 'Excel source rows'],
+  'd.reasons': ['保留原因', 'Reasons kept'],
+  'd.counts': ['Tag：共 {t}，Excel 保留 <b class="c-keep">{k}</b>，相依保留 <b class="c-dep">{d}</b>，移除 <span class="c-rem">{r}</span>', 'Tags: {t} total, Excel kept <b class="c-keep">{k}</b>, dependency kept <b class="c-dep">{d}</b>, removed <span class="c-rem">{r}</span>'],
+  'd.lnOut': ['LN 輸出', 'LN output'], 'd.ldOut': ['LDevice 輸出', 'LDevice output'],
+  'd.keep': ['保留', 'kept'], 'd.lnRem': ['移除整個 LN', 'entire LN removed'], 'd.ldRem': ['移除整個 LDevice', 'entire LDevice removed'],
+  /* 統計 */
+  's.sec1': ['ICD / Excel', 'ICD / Excel'],
+  's.total': ['ICD 原始 Tag 數量 (leaf DA/BDA)', 'Original ICD tags (leaf DA/BDA)'],
+  's.xlRows': ['Excel 非空白列', 'Excel non-empty rows'],
+  's.xlUniq': ['Excel 白名單 Tag（去重後）', 'Excel whitelist tags (deduplicated)'],
+  's.dup': ['重複項目（已忽略）', 'Duplicates (ignored)'],
+  's.matched': ['成功匹配', 'Matched'],
+  's.unmatched': ['Excel 有但 ICD 找不到', 'In Excel but not found in ICD'],
+  's.amb': ['有歧義的路徑', 'Ambiguous paths'],
+  's.sec2': ['篩選結果（Tag）', 'Filter result (tags)'],
+  's.excel': ['Excel 白名單保留', 'Kept by Excel whitelist'],
+  's.dep': ['因相依關係額外保留', 'Additionally kept (dependencies)'],
+  's.kept': ['預計保留合計', 'Total to keep'],
+  's.removed': ['預計移除', 'To remove'],
+  's.out': ['輸出 ICD 回讀 Tag 數', 'Tags read back from output ICD'],
+  's.ratio': ['減少比例', 'Reduction'],
+  's.sec3': ['結構變更', 'Structural changes'],
+  's.ld': ['LDevice（前 → 後）', 'LDevice (before → after)'],
+  's.ln': ['LN（前 → 後）', 'LN (before → after)'],
+  's.ds': ['DataSet（前 → 後）', 'DataSet (before → after)'],
+  's.rcb': ['ReportControl（前 → 後）', 'ReportControl (before → after)'],
+  's.inst': ['移除 DOI/SDI/DAI 實例值', 'DOI/SDI/DAI instances removed'],
+  's.types': ['型別：就地精簡 / 複製新增', 'Types: reduced in place / cloned'],
+  's.typesRem': ['型別移除 LN/DO/DA/Enum', 'Types removed LN/DO/DA/Enum'],
+  's.size': ['輸出檔案大小', 'Output file size'],
+  's.sec4': ['SCL 結構驗證', 'SCL structural validation'],
+  's.new': ['篩選新增 錯誤 / 警告', 'New errors / warnings'],
+  's.pre': ['原始 ICD 既有 錯誤 / 警告', 'Pre-existing errors / warnings'],
+  's.ms': ['分析耗時', 'Analysis time'],
+  /* CSV */
+  'csv.match': ['Excel 列|Excel 原始內容|正規化路徑|狀態|匹配 Leaf 數|匹配路徑 / 訊息', 'Excel row|Excel original|Normalized path|Status|Matched leaves|Matched path / message'],
+  'csv.tags': ['IED|LDevice|LN|FC|DO 路徑|DA 路徑|MMS 參照|bType|狀態|Excel 列|保留原因 / 錯誤', 'IED|LDevice|LN|FC|DO path|DA path|MMS reference|bType|Status|Excel rows|Reason / error'],
+  'csv.val': ['等級|來源|代碼|說明', 'Level|Source|Code|Message'],
+  'csv.scope': ['驗證範圍', 'Validation scope'],
+  'csv.scopeD': ['XML 格式 + 本工具實作的 SCL 結構/參照檢查 + 回讀比對；未執行 XSD Schema 驗證，不代表通過 IEC 61850 或 Elipse 相容性測試', 'XML well-formedness + SCL structure/reference checks implemented by this tool + read-back comparison; no XSD schema validation; does not imply IEC 61850 conformance or Elipse compatibility'],
+  /* 保留原因（類別 + 細節） */
+  'r.amb': ['歧義匹配', 'Ambiguous match'],
+  'r.ambD': ['Excel 第 {row} 列「{v}」', 'Excel row {row} "{v}"'],
+  'r.qt': ['品質/時間戳', 'Quality/timestamp'],
+  'r.qtD': ['{n}（q/t 選項）', '{n} (q/t option)'],
+  'r.ctl': ['控制完整性', 'Control completeness'],
+  'r.ctlD': ['Oper/SBOw/Cancel 完整結構', 'complete Oper/SBOw/Cancel structure'],
+  'r.ds': ['DataSet 成員', 'DataSet member'],
+  'r.dsD': ['{p}（被 {u} 使用，DataSet 須與 IED 一致）', '{p} (used by {u}; DataSet must match the IED)'],
+  'r.dsUnref': ['未被控制區塊使用', 'not used by any control block'],
+  'r.gran': ['刪減粒度', 'Granularity'],
+  'r.granDA': ['完整 DA 結構', 'complete DA structure'],
+  'r.granDOFC': ['完整 DO（同 FC）', 'complete DO (same FC)'],
+  'r.granDO': ['完整 DO', 'complete DO'],
+  'r.min': ['SCL 結構最小保留', 'SCL structural minimum'],
+  'r.minLN0': ['LDevice 必須有 LN0，且 LNodeType 至少一個 DO', 'an LDevice must have LN0 and an LNodeType needs at least one DO'],
+  'r.minLN': ['LN 內含保留的 DataSet/控制區塊', 'the LN contains a kept DataSet/control block'],
+  /* Matcher */
+  'm.empty': ['路徑格式錯誤：含空的路徑段（連續分隔符號或開頭/結尾為分隔符號）', 'Invalid path: empty segment (consecutive separators, or leading/trailing separator)'],
+  'm.fcMis': ['FC 不符：{n} 的 FC 為 {a}，路徑指定 {b}', 'FC mismatch: FC of {n} is {a}, the path specifies {b}'],
+  'm.noFc': ['{k} {n} 下沒有 FC={fc} 的資料', '{k} {n} has no data with FC={fc}'],
+  'm.notIn': ['「{t}」不存在於 {k} {n}', '"{t}" does not exist in {k} {n}'],
+  'm.typeOf': ['（型別 {id}）', ' (type {id})'],
+  'm.caseHint': ['；提示：大小寫不同的「{n}」存在（未自動採用）', '; hint: "{n}" exists with different letter case (not used automatically)'],
+  'm.prefix': ['LN「{ln}」存在，但前綴「{p}」與 IED/LDevice 名稱不符', 'LN "{ln}" exists, but the prefix "{p}" does not match the IED/LDevice name'],
+  'm.lnErr': ['LN {n}：{e}', 'LN {n}: {e}'],
+  'm.noLN': ['找不到對應的 LN 名稱', 'No matching LN name found'],
+  'm.lnCase': ['；提示：大小寫不同的 LN「{n}」存在（未自動採用）', '; hint: LN "{n}" exists with different letter case (not used automatically)'],
+  'm.amb': ['有 {n} 個候選：', '{n} candidates: '],
+  'm.nonLeaf': ['非末端節點（{k}），展開為 {n} 個 Tag：', 'Non-leaf node ({k}), expanded to {n} tags: '],
+  'm.dup': ['與第 {r} 列重複，已忽略', 'Duplicate of row {r}; ignored'],
+  'm.sep': ['；', '; '],
+  /* SCL */
+  'x.xml': ['XML 格式錯誤：', 'XML syntax error: '],
+  'x.root': ['根元素不是 <SCL>，不是有效的 SCL 檔案', 'The root element is not <SCL>; not a valid SCL file'],
+  'x.ns': ['根元素命名空間為「{ns}」，非標準 SCL 命名空間 {std}', 'Root namespace is "{ns}", not the standard SCL namespace {std}'],
+  'x.none': ['(無)', '(none)'],
+  'x.dupType': ['重複的 {tag} id「{id}」', 'Duplicate {tag} id "{id}"'],
+  'x.noDtt': ['檔案沒有 DataTypeTemplates', 'The file has no DataTypeTemplates'],
+  'x.lnErr': ['LN {p}：{e}', 'LN {p}: {e}'],
+  'x.lnClass': ['LN {p} 的 lnClass「{a}」與 LNodeType「{t}」的 lnClass「{b}」不一致', 'lnClass "{a}" of LN {p} differs from lnClass "{b}" of LNodeType "{t}"'],
+  'e.noDAT': ['找不到 DAType「{id}」', 'DAType "{id}" not found'],
+  'e.cycDA': ['DAType「{id}」循環參照', 'DAType "{id}" is referenced circularly'],
+  'e.emptyDAT': ['DAType「{id}」沒有 BDA', 'DAType "{id}" has no BDA'],
+  'e.noEnum': ['找不到 EnumType「{id}」', 'EnumType "{id}" not found'],
+  'e.noDOT': ['找不到 DOType「{id}」', 'DOType "{id}" not found'],
+  'e.cycDO': ['DOType「{id}」循環參照', 'DOType "{id}" is referenced circularly'],
+  'e.noLNT': ['找不到 LNodeType「{id}」', 'LNodeType "{id}" not found'],
+  'e.noIED': ['找不到 IED「{n}」', 'IED "{n}" not found'],
+  'e.noLD': ['找不到 LDevice inst「{n}」', 'LDevice inst "{n}" not found'],
+  'e.noLN': ['找不到 LN「{n}」於 {ld}', 'LN "{n}" not found in {ld}'],
+  'e.noDO': ['找不到 DO/SDO「{n}」於 {p}', 'DO/SDO "{n}" not found in {p}'],
+  'e.noDA': ['找不到 DA/BDA「{n}」於 {p}', 'DA/BDA "{n}" not found in {p}'],
+  'e.fcDA': ['FC 不符：{p} 的 FC 為 {a}，參照為 {b}', 'FC mismatch: FC of {p} is {a}, the reference says {b}'],
+  'e.fcDO': ['FC 不符：{p} 沒有 FC={fc} 的資料', 'FC mismatch: {p} has no data with FC={fc}'],
+  /* Validator */
+  'v.emptyLnt': ['LNodeType「{id}」沒有任何 DO', 'LNodeType "{id}" has no DO'],
+  'v.dupDo': ['LNodeType「{id}」中 DO 名稱「{n}」重複', 'Duplicate DO name "{n}" in LNodeType "{id}"'],
+  'v.lntRef': ['LNodeType「{id}」的 DO「{n}」參照不存在的 DOType「{t}」', 'DO "{n}" of LNodeType "{id}" references missing DOType "{t}"'],
+  'v.datRef': ['{o} 的「{n}」參照不存在的 DAType「{t}」', '"{n}" of {o} references missing DAType "{t}"'],
+  'v.enumRef': ['{o} 的「{n}」參照不存在的 EnumType「{t}」', '"{n}" of {o} references missing EnumType "{t}"'],
+  'v.dupName': ['DOType「{id}」中名稱「{n}」重複', 'Duplicate name "{n}" in DOType "{id}"'],
+  'v.sdoRef': ['DOType「{id}」的 SDO「{n}」參照不存在的 DOType「{t}」', 'SDO "{n}" of DOType "{id}" references missing DOType "{t}"'],
+  'v.emptyDat': ['DAType「{id}」沒有任何 BDA', 'DAType "{id}" has no BDA'],
+  'v.emptyEnum': ['EnumType「{id}」沒有 EnumVal', 'EnumType "{id}" has no EnumVal'],
+  'v.dupIed': ['IED 名稱「{n}」重複', 'Duplicate IED name "{n}"'],
+  'v.noLd': ['IED {i} / AccessPoint {a} 的 Server 沒有任何 LDevice', 'The Server of IED {i} / AccessPoint {a} has no LDevice'],
+  'v.dupLd': ['IED {i} 中 LDevice inst「{n}」重複', 'Duplicate LDevice inst "{n}" in IED {i}'],
+  'v.ln0': ['LDevice {ld} 的 LN0 數量為 {n}（必須為 1）', 'LDevice {ld} has {n} LN0 (must be exactly 1)'],
+  'v.dupLn': ['LDevice {ld} 中 LN 名稱「{n}」重複', 'Duplicate LN name "{n}" in LDevice {ld}'],
+  'v.inst': ['{w}：{tag}「{n}」在資料型別中不存在', '{w}: {tag} "{n}" does not exist in the data type'],
+  'v.fcda': ['DataSet {p}：{e}', 'DataSet {p}: {e}'],
+  'v.dupDs': ['DataSet 名稱重複：{p}', 'Duplicate DataSet name: {p}'],
+  'v.datset': ['{tag}「{n}」({p}) 參照不存在的 DataSet「{ds}」', '{tag} "{n}" ({p}) references missing DataSet "{ds}"'],
+  'v.cap': ['ConnectedAP 參照不存在的 AccessPoint：{p}', 'ConnectedAP references a missing AccessPoint: {p}'],
+  'v.commCb': ['Communication {tag} 參照不存在的控制區塊：{p}', 'Communication {tag} references a missing control block: {p}'],
+  'v.lnode': ['Substation LNode 參照無效：{e}', 'Invalid Substation LNode reference: {e}'],
+  /* Engine 警告 */
+  'w.fcda': ['保留的 DataSet {p} 中有無法解析的 FCDA：{e}', 'Kept DataSet {p} contains an unresolvable FCDA: {e}'],
+  'w.iedEmpty': ['IED {i} 沒有任何保留資料；為維持 SCL 結構（Server 至少一個 LDevice），保留 {ld} 的最小內容', 'IED {i} has no kept data; to keep a valid SCL structure (a Server needs at least one LDevice), minimal content of {ld} is kept'],
+  'w.lnode': ['已移除 {n} 個指向已刪除 LN 的 Substation/LNode 參照：{list}', 'Removed {n} Substation/LNode references to deleted LNs: {list}'],
+  'w.extref': ['ExtRef（{p}）參照的 {t} 已被移除，請確認', '{t} referenced by ExtRef ({p}) has been removed; please check'],
+  'w.rcb': ['已移除 {n} 個 ReportControl：{list}。Elipse 將無法透過這些 Report 接收資料（只能 polling）。', 'Removed {n} ReportControl(s): {list}. Elipse cannot receive data through these Reports (polling only).'],
+  'w.rtMissing': ['回讀比對失敗：{n} 個預計保留的 Tag 在輸出 ICD 中不存在，例如 {ex}', 'Read-back check failed: {n} tags expected to be kept are missing in the output ICD, e.g. {ex}'],
+  'w.rtExtra': ['回讀比對失敗：輸出 ICD 多出 {n} 個未預期的 Tag，例如 {ex}', 'Read-back check failed: the output ICD has {n} unexpected tags, e.g. {ex}'],
+  'w.outParse': ['輸出 ICD 無法重新解析：', 'The output ICD cannot be re-parsed: '],
+  /* Excel 讀取錯誤 */
+  'xe.ds': ['此瀏覽器不支援 DecompressionStream，請使用新版 Chrome / Edge', 'This browser does not support DecompressionStream; use a recent Chrome / Edge'],
+  'xe.notZip': ['不是有效的 XLSX (ZIP) 檔案', 'Not a valid XLSX (ZIP) file'],
+  'xe.zipDir': ['XLSX ZIP 目錄損毀', 'The XLSX ZIP directory is corrupted'],
+  'xe.enc': ['檔案受密碼保護，請先移除密碼後再匯入', 'The file is password-protected; remove the password and try again'],
+  'xe.method': ['不支援的 ZIP 壓縮方式：', 'Unsupported ZIP compression method: '],
+  'xe.noWb': ['XLSX 中找不到 workbook.xml', 'workbook.xml not found in the XLSX'],
+  'xe.noSheet': ['找不到工作表資料：', 'Worksheet data not found: '],
+  'xe.notXls': ['不是有效的 XLS (OLE2) 檔案', 'Not a valid XLS (OLE2) file'],
+  'xe.sst': ['SST 資料不完整', 'Incomplete SST data'],
+  'xe.noBook': ['XLS 中找不到 Workbook 資料流', 'Workbook stream not found in the XLS'],
+  'xe.biff': ['僅支援 Excel 97-2003 (BIFF8) 格式的 .xls，請另存為 .xlsx 後再匯入', 'Only Excel 97-2003 (BIFF8) .xls is supported; save as .xlsx and try again'],
+  'xe.unknown': ['無法辨識的 Excel 檔案格式（需為 .xlsx 或 .xls）', 'Unrecognized Excel format (.xlsx or .xls required)']
+};
+let LANG = 'zh';
+function t(k, p){
+  const e = DICT[k];
+  if (!e) { console.warn('i18n missing key:', k); return k; }
+  let s = e[LANG === 'en' ? 1 : 0];
+  if (p) s = s.replace(/\{(\w+)\}/g, (m, n) => p[n] != null ? p[n] : m);
+  return s;
+}
+const SEP = '\u0001';                        // 保留原因：類別 SEP 細節
+const reason = (cat, detail) => t(cat) + SEP + detail;
+const fmtReason = r => r.replace(SEP, t('sep'));
+
+/* =====================================================================
+ * Util
+ * ===================================================================== */
+const $ = s => document.querySelector(s);
+const SCL_NS = 'http://www.iec.ch/61850/2003/SCL';
+const STD_FC = new Set(['ST','MX','CO','SP','SV','CF','DC','SG','SE','SR','OR','BL','EX','US','MS','RP','BR','LG','GO','GS','SC','NV']);
+const ESC = {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'};
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ESC[c]);
+const colName = i => { let s = ''; i++; while (i > 0) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+const fmt = n => (n == null ? '-' : Number(n).toLocaleString('en-US'));
+function csvCell(v){ v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function toCsv(rows){ return '﻿' + rows.map(r => r.map(csvCell).join(',')).join('\r\n'); }
+function download(name, content, mime){
+  const blob = content instanceof Blob ? content : new Blob([content], {type: mime || 'text/plain;charset=utf-8'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+}
+const parseXml = s => new DOMParser().parseFromString(s, 'application/xml');
+function sclKids(el, ns, name){ const out = []; for (let c = el.firstElementChild; c; c = c.nextElementSibling) if (c.namespaceURI === ns && (!name || c.localName === name)) out.push(c); return out; }
+function sclKid(el, ns, name){ for (let c = el.firstElementChild; c; c = c.nextElementSibling) if (c.namespaceURI === ns && c.localName === name) return c; return null; }
+function removeEl(el){
+  const p = el.previousSibling;
+  if (p && p.nodeType === 3 && !/\S/.test(p.nodeValue)) p.remove();
+  el.remove();
+}
+
+/* =====================================================================
+ * Excel reader (.xlsx / .xls) — 原生實作，無第三方套件
+ * ===================================================================== */
+const Excel = (() => {
+  async function inflateRaw(data){
+    if (typeof DecompressionStream === 'undefined') throw new Error(t('xe.ds'));
+    const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  function readZip(buf){
+    const u8 = new Uint8Array(buf), dv = new DataView(buf);
+    let eocd = -1;
+    for (let i = u8.length - 22; i >= 0 && i >= u8.length - 65557; i--) if (dv.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
+    if (eocd < 0) throw new Error(t('xe.notZip'));
+    const n = dv.getUint16(eocd + 10, true); let p = dv.getUint32(eocd + 16, true);
+    const map = new Map(); const td = new TextDecoder();
+    for (let k = 0; k < n; k++) {
+      if (dv.getUint32(p, true) !== 0x02014b50) throw new Error(t('xe.zipDir'));
+      const flags = dv.getUint16(p + 8, true), method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true);
+      const nlen = dv.getUint16(p + 28, true), elen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), lho = dv.getUint32(p + 42, true);
+      const name = td.decode(u8.subarray(p + 46, p + 46 + nlen)).replace(/\\/g, '/').replace(/^\//, '');
+      map.set(name.toLowerCase(), {method, csize, lho, flags});
+      p += 46 + nlen + elen + clen;
+    }
+    return {
+      async get(name){
+        const e = map.get(name.toLowerCase().replace(/^\//, '')); if (!e) return null;
+        if (e.flags & 1) throw new Error(t('xe.enc'));
+        const nl = dv.getUint16(e.lho + 26, true), el = dv.getUint16(e.lho + 28, true);
+        const s = e.lho + 30 + nl + el; const data = u8.subarray(s, s + e.csize);
+        let out;
+        if (e.method === 0) out = data; else if (e.method === 8) out = await inflateRaw(data);
+        else throw new Error(t('xe.method') + e.method);
+        return new TextDecoder('utf-8').decode(out);
+      }
+    };
+  }
+  function resolveTarget(baseDir, target){
+    const raw = target.startsWith('/') ? target.slice(1) : baseDir + target;
+    const out = []; for (const p of raw.split('/')) { if (p === '..') out.pop(); else if (p && p !== '.') out.push(p); }
+    return out.join('/');
+  }
+  function relsMap(text, baseDir){
+    const m = new Map(); if (!text) return m;
+    for (const r of parseXml(text).getElementsByTagNameNS('*', 'Relationship'))
+      m.set(r.getAttribute('Id'), {target: resolveTarget(baseDir, r.getAttribute('Target') || ''), type: r.getAttribute('Type') || ''});
+    return m;
+  }
+  function firstKid(el, name){ for (let c = el.firstElementChild; c; c = c.nextElementSibling) if (c.localName === name) return c; return null; }
+  function tText(el){ let s = ''; for (const x of el.getElementsByTagNameNS('*', 't')) { if (x.parentNode && x.parentNode.localName === 'rPh') continue; s += x.textContent; } return s; }
+  function colIndex(ref){ let n = 0; for (let i = 0; i < ref.length; i++) { const c = ref.charCodeAt(i) & ~32; if (c >= 65 && c <= 90) n = n * 26 + (c - 64); else break; } return n - 1; }
+  function numStr(n){ return Number.isFinite(n) ? String(n) : ''; }
+  function parseSheetXml(text, sst){
+    const d = parseXml(text); const rows = []; let rAuto = 0;
+    for (const row of d.getElementsByTagNameNS('*', 'row')) {
+      const ra = row.getAttribute('r'); const ri = ra ? parseInt(ra, 10) - 1 : rAuto; rAuto = ri + 1;
+      const arr = []; let cAuto = 0;
+      for (let c = row.firstElementChild; c; c = c.nextElementSibling) {
+        if (c.localName !== 'c') continue;
+        const ref = c.getAttribute('r'); const ci = ref ? colIndex(ref) : cAuto; cAuto = ci + 1;
+        const ty = c.getAttribute('t') || 'n'; let v;
+        if (ty === 'inlineStr') { const is = firstKid(c, 'is'); v = is ? tText(is) : ''; }
+        else {
+          const ve = firstKid(c, 'v'); if (!ve) continue; const raw = ve.textContent;
+          if (ty === 's') v = sst[parseInt(raw, 10)] ?? '';
+          else if (ty === 'b') v = raw === '1' ? 'TRUE' : 'FALSE';
+          else if (ty === 'n') { const num = Number(raw); v = Number.isFinite(num) ? String(num) : raw; }
+          else v = raw;
+        }
+        arr[ci] = v;
+      }
+      rows[ri] = arr;
+    }
+    return rows;
+  }
+  async function parseXlsx(buf){
+    const z = readZip(buf);
+    let wbPath = 'xl/workbook.xml';
+    for (const r of relsMap(await z.get('_rels/.rels'), '').values()) if (/\/officeDocument$/.test(r.type)) wbPath = r.target;
+    const wbText = await z.get(wbPath); if (!wbText) throw new Error(t('xe.noWb'));
+    const wbDir = wbPath.includes('/') ? wbPath.slice(0, wbPath.lastIndexOf('/') + 1) : '';
+    const rels = relsMap(await z.get(wbDir + '_rels/' + wbPath.slice(wbDir.length) + '.rels'), wbDir);
+    let sst = [];
+    for (const r of rels.values()) if (/\/sharedStrings$/.test(r.type)) {
+      const s = await z.get(r.target);
+      if (s) sst = Array.from(parseXml(s).getElementsByTagNameNS('*', 'si'), tText);
+    }
+    const sheets = [];
+    for (const s of parseXml(wbText).getElementsByTagNameNS('*', 'sheet')) {
+      let rid = null; for (const a of s.attributes) if (a.localName === 'id' && a.namespaceURI) rid = a.value;
+      const r = rels.get(rid);
+      sheets.push({name: s.getAttribute('name'), path: r ? r.target : null, rows: null});
+    }
+    return {
+      format: 'xlsx', sheets,
+      async loadSheet(i){
+        const sh = sheets[i]; if (sh.rows) return sh.rows;
+        if (!sh.path) throw new Error(t('xe.noSheet') + sh.name);
+        const s = await z.get(sh.path); sh.rows = s ? parseSheetXml(s, sst) : [];
+        return sh.rows;
+      }
+    };
+  }
+
+  /* ---- .xls : OLE2 Compound File + BIFF8 ---- */
+  function parseCFB(u8){
+    const sig = [0xD0,0xCF,0x11,0xE0,0xA1,0xB1,0x1A,0xE1];
+    for (let i = 0; i < 8; i++) if (u8[i] !== sig[i]) throw new Error(t('xe.notXls'));
+    const dv = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+    const ssz = 1 << dv.getUint16(30, true), mssz = 1 << dv.getUint16(32, true);
+    const dirStart = dv.getUint32(48, true), cutoff = dv.getUint32(56, true), mfStart = dv.getUint32(60, true);
+    const difStart = dv.getUint32(68, true), nDif = dv.getUint32(72, true);
+    const ENDC = 0xFFFFFFFE, FREE = 0xFFFFFFFF;
+    const secOff = s => (s + 1) * ssz;
+    const fatSecs = [];
+    for (let i = 0; i < 109; i++) { const s = dv.getUint32(76 + i * 4, true); if (s < 0xFFFFFFFA) fatSecs.push(s); }
+    let ds = difStart, g = 0;
+    while (ds < 0xFFFFFFFA && g++ <= nDif + 2) {
+      const o = secOff(ds), per = ssz / 4 - 1;
+      for (let i = 0; i < per; i++) { const s = dv.getUint32(o + i * 4, true); if (s < 0xFFFFFFFA) fatSecs.push(s); }
+      ds = dv.getUint32(o + per * 4, true);
+    }
+    const per = ssz / 4; const fat = new Uint32Array(fatSecs.length * per).fill(FREE);
+    fatSecs.forEach((s, k) => { const o = secOff(s); for (let i = 0; i < per && o + i * 4 + 4 <= u8.length; i++) fat[k * per + i] = dv.getUint32(o + i * 4, true); });
+    const chain = (start, table) => { const out = []; let s = start, n = 0; while (s !== ENDC && s < table.length && n++ <= table.length) { out.push(s); s = table[s]; } return out; };
+    const readChain = (start, size) => {
+      const secs = chain(start, fat); const out = new Uint8Array(secs.length * ssz);
+      secs.forEach((s, i) => { const o = secOff(s); out.set(u8.subarray(o, Math.min(o + ssz, u8.length)), i * ssz); });
+      return size == null ? out : out.subarray(0, Math.min(size, out.length));
+    };
+    const dir = readChain(dirStart, null); const ddv = new DataView(dir.buffer, dir.byteOffset, dir.byteLength);
+    const entries = [];
+    for (let o = 0; o + 128 <= dir.length; o += 128) {
+      const nl = ddv.getUint16(o + 64, true); let name = '';
+      for (let i = 0; i < Math.max(0, nl / 2 - 1); i++) name += String.fromCharCode(ddv.getUint16(o + i * 2, true));
+      entries.push({name, type: dir[o + 66], start: ddv.getUint32(o + 116, true), size: ddv.getUint32(o + 120, true)});
+    }
+    let mini = null, minifat = null;
+    function getStream(e){
+      if (e.size < cutoff) {
+        if (!mini) {
+          mini = readChain(entries[0].start, entries[0].size);
+          const mf = mfStart < 0xFFFFFFFA ? readChain(mfStart, null) : new Uint8Array(0);
+          const mdv = new DataView(mf.buffer, mf.byteOffset, mf.byteLength);
+          minifat = new Uint32Array(mf.length >> 2); for (let i = 0; i < minifat.length; i++) minifat[i] = mdv.getUint32(i * 4, true);
+        }
+        const secs = chain(e.start, minifat); const out = new Uint8Array(secs.length * mssz);
+        secs.forEach((s, i) => out.set(mini.subarray(s * mssz, s * mssz + mssz), i * mssz));
+        return out.subarray(0, e.size);
+      }
+      return readChain(e.start, e.size);
+    }
+    return {entries, getStream};
+  }
+  function readStr(u8, off, cch, high){
+    if (high) return new TextDecoder('utf-16le').decode(u8.subarray(off, off + cch * 2));
+    let s = ''; for (let i = 0; i < cch; i++) s += String.fromCharCode(u8[off + i]); return s;
+  }
+  function parseSSTbiff(segs){
+    let si = 0, pos = 0; const out = [];
+    const ensure = () => { while (si < segs.length && pos >= segs[si].length) { si++; pos = 0; } };
+    const b = () => { ensure(); if (si >= segs.length) throw new Error(t('xe.sst')); return segs[si][pos++]; };
+    const u16 = () => b() | (b() << 8);
+    const u32 = () => (u16() | (u16() << 16)) >>> 0;
+    const skip = n => { while (n > 0) { ensure(); if (si >= segs.length) return; const a = Math.min(n, segs[si].length - pos); pos += a; n -= a; } };
+    u32(); const unique = u32();
+    for (let k = 0; k < unique; k++) {
+      ensure(); if (si >= segs.length) break;
+      const cch = u16(); const fl = b(); let high = fl & 1; let runs = 0, ext = 0;
+      if (fl & 8) runs = u16(); if (fl & 4) ext = u32();
+      let str = '', left = cch;
+      while (left > 0) {
+        if (pos >= segs[si].length) { si++; pos = 0; if (si >= segs.length) break; high = segs[si][pos++] & 1; }
+        const seg = segs[si]; const n = Math.min(left, Math.floor((seg.length - pos) / (high ? 2 : 1)));
+        if (n === 0) { pos = seg.length; continue; }
+        if (high) { str += new TextDecoder('utf-16le').decode(seg.subarray(pos, pos + n * 2)); pos += n * 2; }
+        else { for (let i = 0; i < n; i++) str += String.fromCharCode(seg[pos + i]); pos += n; }
+        left -= n;
+      }
+      skip(runs * 4 + ext); out.push(str);
+    }
+    return out;
+  }
+  function rk(v){
+    let n;
+    if (v & 2) n = v >> 2;
+    else { const dv = new DataView(new ArrayBuffer(8)); dv.setUint32(4, (v & 0xFFFFFFFC) >>> 0, true); n = dv.getFloat64(0, true); }
+    return (v & 1) ? n / 100 : n;
+  }
+  function parseXls(buf){
+    const cfb = parseCFB(new Uint8Array(buf));
+    if (cfb.entries.some(e => e.name === 'EncryptedPackage')) throw new Error(t('xe.enc'));
+    const e = cfb.entries.find(x => x.type === 2 && /^workbook$/i.test(x.name)) || cfb.entries.find(x => x.type === 2 && /^book$/i.test(x.name));
+    if (!e) throw new Error(t('xe.noBook'));
+    const s = cfb.getStream(e); const dv = new DataView(s.buffer, s.byteOffset, s.byteLength);
+    const rec = p => ({type: dv.getUint16(p, true), len: dv.getUint16(p + 2, true), off: p + 4});
+    const f = rec(0);
+    if (f.type !== 0x0809 || dv.getUint16(f.off, true) !== 0x0600) throw new Error(t('xe.biff'));
+    const sheets = []; let sst = []; let p = 0;
+    while (p + 4 <= s.length) {
+      const r = rec(p); p = r.off + r.len;
+      if (r.type === 0x002F) throw new Error(t('xe.enc'));
+      if (r.type === 0x0085) {
+        const cch = s[r.off + 6], fl = s[r.off + 7];
+        sheets.push({name: readStr(s, r.off + 8, cch, fl & 1), pos: dv.getUint32(r.off, true), dt: s[r.off + 5], rows: null});
+      } else if (r.type === 0x00FC) {
+        const segs = [s.subarray(r.off, r.off + r.len)];
+        while (p + 4 <= s.length) { const c = rec(p); if (c.type !== 0x003C) break; segs.push(s.subarray(c.off, c.off + c.len)); p = c.off + c.len; }
+        sst = parseSSTbiff(segs);
+      } else if (r.type === 0x000A) break;
+    }
+    const u16 = o => dv.getUint16(o, true);
+    function loadSheet(i){
+      const sh = sheets[i]; if (sh.rows) return sh.rows;
+      const rows = []; const set = (r, c, v) => { (rows[r] || (rows[r] = []))[c] = v; };
+      if (sh.dt !== 0) { sh.rows = rows; return rows; }
+      let q = sh.pos, pend = null, first = true;
+      while (q + 4 <= s.length) {
+        const r = rec(q); q = r.off + r.len; const o = r.off;
+        if (first) { first = false; if (r.type !== 0x0809) break; continue; }
+        if (r.type === 0x000A) break;
+        switch (r.type) {
+          case 0x00FD: set(u16(o), u16(o + 2), sst[dv.getUint32(o + 6, true)] ?? ''); break;
+          case 0x0204: case 0x00D6: set(u16(o), u16(o + 2), readStr(s, o + 9, u16(o + 6), s[o + 8] & 1)); break;
+          case 0x0203: set(u16(o), u16(o + 2), numStr(dv.getFloat64(o + 6, true))); break;
+          case 0x027E: set(u16(o), u16(o + 2), numStr(rk(dv.getUint32(o + 6, true)))); break;
+          case 0x00BD: { const row = u16(o), c0 = u16(o + 2), n = (r.len - 6) / 6; for (let k = 0; k < n; k++) set(row, c0 + k, numStr(rk(dv.getUint32(o + 4 + k * 6 + 2, true)))); break; }
+          case 0x0006: {
+            const row = u16(o), col = u16(o + 2);
+            if (u16(o + 12) === 0xFFFF) { const ty = s[o + 6]; if (ty === 0) pend = [row, col]; else if (ty === 1) set(row, col, s[o + 8] ? 'TRUE' : 'FALSE'); }
+            else set(row, col, numStr(dv.getFloat64(o + 6, true)));
+            break;
+          }
+          case 0x0207: if (pend) { set(pend[0], pend[1], readStr(s, o + 3, u16(o), s[o + 2] & 1)); pend = null; } break;
+          case 0x0205: if (s[o + 7] === 0) set(u16(o), u16(o + 2), s[o + 6] ? 'TRUE' : 'FALSE'); break;
+        }
+      }
+      sh.rows = rows; return rows;
+    }
+    return {format: 'xls', sheets, async loadSheet(i){ return loadSheet(i); }};
+  }
+  async function open(buf){
+    const u8 = new Uint8Array(buf, 0, Math.min(8, buf.byteLength));
+    if (u8[0] === 0x50 && u8[1] === 0x4B) return parseXlsx(buf);
+    if (u8[0] === 0xD0 && u8[1] === 0xCF) return parseXls(buf);
+    throw new Error(t('xe.unknown'));
+  }
+  return {open};
+})();
+
+/* =====================================================================
+ * SCL — IEC 61850-6 資料模型解析與實例化
+ * ===================================================================== */
+const SCL = (() => {
+  function decode(buf){
+    const u8 = new Uint8Array(buf);
+    if (u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF) return new TextDecoder('utf-8').decode(u8.subarray(3));
+    if (u8[0] === 0xFF && u8[1] === 0xFE) return new TextDecoder('utf-16le').decode(u8.subarray(2));
+    if (u8[0] === 0xFE && u8[1] === 0xFF) return new TextDecoder('utf-16be').decode(u8.subarray(2));
+    const head = new TextDecoder('latin1').decode(u8.subarray(0, 300));
+    const m = head.match(/<\?xml[^>]*encoding\s*=\s*["']([^"']+)["']/i);
+    try { return new TextDecoder(m ? m[1].trim().toLowerCase() : 'utf-8').decode(u8); }
+    catch (e) { return new TextDecoder('utf-8').decode(u8); }
+  }
+
+  /** 建立模型。text 必須保留，輸出時會重新解析同一份文字並以元素序號對應。 */
+  function build(text){
+    const doc = parseXml(text);
+    const pe = doc.getElementsByTagName('parsererror');
+    if (pe.length) throw new Error(t('x.xml') + pe[0].textContent.replace(/\s+/g, ' ').slice(0, 300));
+    const root = doc.documentElement;
+    if (root.localName !== 'SCL') throw new Error(t('x.root'));
+    const ns = root.namespaceURI;
+    const issues = []; const seen = new Set();
+    const issue = (level, code, msg) => { const k = code + '|' + msg; if (seen.has(k)) return; seen.add(k); issues.push({level, code, msg}); };
+    if (ns !== SCL_NS) issue('warning', 'NS', t('x.ns', {ns: ns || t('x.none'), std: SCL_NS}));
+
+    const all = doc.getElementsByTagName('*'); const elIndex = new Map();
+    for (let i = 0; i < all.length; i++) elIndex.set(all[i], i);
+
+    /* ---- DataTypeTemplates ---- */
+    const T = {ln: new Map(), do: new Map(), da: new Map(), en: new Map()};
+    const KIND = {LNodeType: 'ln', DOType: 'do', DAType: 'da', EnumType: 'en'};
+    const dtt = sclKid(root, ns, 'DataTypeTemplates');
+    const allTypeIds = new Set();
+    if (dtt) for (const e of sclKids(dtt, ns)) {
+      const k = KIND[e.localName]; if (!k) continue;
+      const id = e.getAttribute('id') || '';
+      allTypeIds.add(id);
+      if (T[k].has(id)) { issue('error', 'DUP_TYPE', t('x.dupType', {tag: e.localName, id})); continue; }
+      const ty = {kind: k, id, el: e, children: []};
+      if (k === 'ln') { ty.lnClass = e.getAttribute('lnClass'); for (const c of sclKids(e, ns, 'DO')) ty.children.push({tag: 'DO', name: c.getAttribute('name'), type: c.getAttribute('type'), el: c}); }
+      else if (k === 'do') {
+        ty.cdc = e.getAttribute('cdc');
+        for (const c of sclKids(e, ns)) {
+          if (c.localName === 'SDO') ty.children.push({tag: 'SDO', name: c.getAttribute('name'), type: c.getAttribute('type'), el: c});
+          else if (c.localName === 'DA') ty.children.push({tag: 'DA', name: c.getAttribute('name'), fc: c.getAttribute('fc'), bType: c.getAttribute('bType'), type: c.getAttribute('type'), count: c.getAttribute('count'), el: c});
+        }
+      } else if (k === 'da') { for (const c of sclKids(e, ns, 'BDA')) ty.children.push({tag: 'BDA', name: c.getAttribute('name'), bType: c.getAttribute('bType'), type: c.getAttribute('type'), count: c.getAttribute('count'), el: c}); }
+      T[k].set(id, ty);
+    }
+    if (!dtt) issue('warning', 'NO_DTT', t('x.noDtt'));
+
+    /* ---- 實例化模型 ---- */
+    const nodes = [], leaves = [], ieds = [], lds = [], lns = [], lnIndex = new Map(), fcsAll = new Set();
+    const mk = (kind, name, parent, extra) => {
+      const n = Object.assign({id: nodes.length, kind, name, parent, children: [], leafStart: leaves.length, leafEnd: leaves.length}, extra);
+      nodes.push(n); if (parent) parent.children.push(n); return n;
+    };
+    const asLeaf = n => { n.leaf = true; n.li = leaves.length; n.leafStart = leaves.length; leaves.push(n); n.leafEnd = leaves.length; };
+
+    function expandDA(parent, def, kind, fc, stack){
+      const n = mk(kind, def.name, parent, {fc, bType: def.bType, typeId: def.type, count: def.count});
+      if (fc) fcsAll.add(fc);
+      if (kind === 'DA') parent.fcs.add(fc);
+      if (def.bType === 'Struct') {
+        const ty = T.da.get(def.type);
+        if (!ty) { n.err = t('e.noDAT', {id: def.type}); issue('error', 'REF_DAT', n.err); asLeaf(n); }
+        else if (stack.includes(def.type)) { n.err = t('e.cycDA', {id: def.type}); issue('error', 'CYCLE', n.err); asLeaf(n); }
+        else if (!ty.children.length) { n.err = t('e.emptyDAT', {id: def.type}); asLeaf(n); }
+        else { stack.push(def.type); for (const c of ty.children) expandDA(n, c, 'BDA', fc, stack); stack.pop(); n.leafEnd = leaves.length; }
+      } else {
+        if (def.bType === 'Enum' && !T.en.has(def.type)) { n.err = t('e.noEnum', {id: def.type}); issue('error', 'REF_ENUM', n.err); }
+        asLeaf(n);
+      }
+      return n;
+    }
+    function expandDO(parent, def, kind, stack){
+      const n = mk(kind, def.name, parent, {typeId: def.type, fcs: new Set()});
+      const ty = T.do.get(def.type);
+      if (!ty) { n.err = t('e.noDOT', {id: def.type}); issue('error', 'REF_DOT', n.err); }
+      else if (stack.includes(def.type)) { n.err = t('e.cycDO', {id: def.type}); issue('error', 'CYCLE', n.err); }
+      else {
+        stack.push(def.type);
+        for (const c of ty.children) { if (c.tag === 'SDO') expandDO(n, c, 'SDO', stack); else expandDA(n, c, 'DA', c.fc, stack); }
+        stack.pop();
+      }
+      n.cdc = ty ? ty.cdc : null;
+      n.leafEnd = leaves.length;
+      n.fcs.forEach(f => parent.fcs.add(f));
+      return n;
+    }
+
+    const datasets = [], controls = [], extRefs = [], lnodes = [], comms = [];
+    for (const iedEl of sclKids(root, ns, 'IED')) {
+      const iedName = iedEl.getAttribute('name') || '';
+      const ied = mk('IED', iedName, null, {el: iedEl, aps: []}); ieds.push(ied);
+      for (const ap of sclKids(iedEl, ns, 'AccessPoint')) {
+        const apName = ap.getAttribute('name') || '';
+        const srv = sclKid(ap, ns, 'Server');
+        ied.aps.push({name: apName, el: ap, server: srv});
+        if (!srv) continue;
+        for (const ldEl of sclKids(srv, ns, 'LDevice')) {
+          const inst = ldEl.getAttribute('inst') || '';
+          const ldName = ldEl.getAttribute('ldName') || (iedName + inst);
+          const ld = mk('LD', ldName, ied, {el: ldEl, inst, ldName, apName, iedName});
+          lds.push(ld);
+          for (const lnEl of [...sclKids(ldEl, ns, 'LN0'), ...sclKids(ldEl, ns, 'LN')]) {
+            const prefix = lnEl.getAttribute('prefix') || '', lnClass = lnEl.getAttribute('lnClass') || '', lnInst = lnEl.getAttribute('inst') || '';
+            const name = prefix + lnClass + lnInst; const lnType = lnEl.getAttribute('lnType');
+            const ln = mk('LN', name, ld, {el: lnEl, prefix, lnClass, lnInst, isLN0: lnEl.localName === 'LN0', typeId: lnType, fcs: new Set()});
+            lns.push(ln);
+            if (!lnIndex.has(name)) lnIndex.set(name, []); lnIndex.get(name).push(ln);
+            const lt = T.ln.get(lnType);
+            if (!lt) { ln.err = t('e.noLNT', {id: lnType}); issue('error', 'REF_LNT', t('x.lnErr', {p: ldName + '/' + name, e: ln.err})); }
+            else {
+              if (lt.lnClass && lt.lnClass !== lnClass) issue('warning', 'LNCLASS', t('x.lnClass', {p: ldName + '/' + name, a: lnClass, t: lnType, b: lt.lnClass}));
+              for (const d of lt.children) expandDO(ln, d, 'DO', [lnType]);
+            }
+            ln.leafEnd = leaves.length;
+            for (const dsEl of sclKids(lnEl, ns, 'DataSet')) {
+              const ds = {name: dsEl.getAttribute('name') || '', el: dsEl, ln, ld, ied, fcdas: [], users: []};
+              for (const f of sclKids(dsEl, ns, 'FCDA')) ds.fcdas.push({el: f, ldInst: f.getAttribute('ldInst'), prefix: f.getAttribute('prefix') || '', lnClass: f.getAttribute('lnClass') || '', lnInst: f.getAttribute('lnInst') || '', doName: f.getAttribute('doName') || '', daName: f.getAttribute('daName') || '', fc: f.getAttribute('fc') || ''});
+              datasets.push(ds);
+            }
+            for (const tag of ['ReportControl', 'LogControl', 'GSEControl', 'SampledValueControl', 'SettingControl'])
+              for (const c of sclKids(lnEl, ns, tag)) controls.push({tag, name: c.getAttribute('name') || '', datSet: c.getAttribute('datSet'), buffered: c.getAttribute('buffered') === 'true', el: c, ln, ld, ied});
+            const inputs = sclKid(lnEl, ns, 'Inputs');
+            if (inputs) for (const x of sclKids(inputs, ns, 'ExtRef')) extRefs.push({el: x, ln, ied, iedName: x.getAttribute('iedName'), ldInst: x.getAttribute('ldInst'), prefix: x.getAttribute('prefix') || '', lnClass: x.getAttribute('lnClass') || '', lnInst: x.getAttribute('lnInst') || '', doName: x.getAttribute('doName') || '', daName: x.getAttribute('daName') || ''});
+          }
+          ld.leafStart = ld.children.length ? ld.children[0].leafStart : leaves.length;
+          ld.leafEnd = leaves.length;
+        }
+      }
+      ied.leafStart = ied.children.length ? ied.children[0].leafStart : leaves.length;
+      ied.leafEnd = leaves.length;
+    }
+    for (const ds of datasets) for (const c of controls) if (c.ln === ds.ln && c.datSet === ds.name) ds.users.push(c);
+    for (const e of root.getElementsByTagNameNS(ns, 'LNode')) lnodes.push({el: e, iedName: e.getAttribute('iedName'), ldInst: e.getAttribute('ldInst'), prefix: e.getAttribute('prefix') || '', lnClass: e.getAttribute('lnClass') || '', lnInst: e.getAttribute('lnInst') || ''});
+    const comm = sclKid(root, ns, 'Communication');
+    if (comm) for (const sn of sclKids(comm, ns, 'SubNetwork')) for (const cap of sclKids(sn, ns, 'ConnectedAP')) {
+      const c = {el: cap, iedName: cap.getAttribute('iedName'), apName: cap.getAttribute('apName'), blocks: []};
+      for (const tag of ['GSE', 'SMV']) for (const g of sclKids(cap, ns, tag)) c.blocks.push({tag, el: g, ldInst: g.getAttribute('ldInst'), cbName: g.getAttribute('cbName')});
+      comms.push(c);
+    }
+
+    const M = {doc, text, ns, root, T, allTypeIds, nodes, leaves, ieds, lds, lns, lnIndex, fcsAll, datasets, controls, extRefs, lnodes, comms, issues, elIndex};
+    M.child = child; M.resolve = (iedName, r) => resolve(M, iedName, r);
+    return M;
+  }
+
+  function child(n, name){
+    if (!n.cmap) { n.cmap = new Map(); for (const c of n.children) n.cmap.set(c.name, c); }
+    return n.cmap.get(name);
+  }
+  /** 解析 FCDA / ExtRef / LNode 型式的參照 → {node, fc} 或 {err} */
+  function resolve(M, iedName, r){
+    const ied = M.ieds.find(x => x.name === iedName);
+    if (!ied) return {err: t('e.noIED', {n: iedName})};
+    const ld = ied.children.find(x => x.inst === (r.ldInst || ''));
+    if (!ld) return {err: t('e.noLD', {n: r.ldInst})};
+    const lnName = (r.prefix || '') + (r.lnClass || '') + (r.lnInst || '');
+    const ln = child(ld, lnName);
+    if (!ln) return {err: t('e.noLN', {n: lnName, ld: ld.ldName})};
+    let node = ln;
+    if (r.doName) for (const p of r.doName.split('.')) {
+      const c = child(node, p);
+      if (!c || (c.kind !== 'DO' && c.kind !== 'SDO')) return {err: t('e.noDO', {n: r.doName, p: ld.ldName + '/' + lnName})};
+      node = c;
+    }
+    if (r.daName) for (const p of r.daName.split('.')) {
+      const c = child(node, p);
+      if (!c || (c.kind !== 'DA' && c.kind !== 'BDA')) return {err: t('e.noDA', {n: r.daName, p: ld.ldName + '/' + lnName + '.' + r.doName})};
+      node = c;
+    }
+    const fc = r.fc || null;
+    if (fc) {
+      if ((node.kind === 'DA' || node.kind === 'BDA') && node.fc !== fc) return {err: t('e.fcDA', {p: lnName + '.' + r.doName + '.' + r.daName, a: node.fc, b: fc})};
+      if (node.fcs && !node.fcs.has(fc)) return {err: t('e.fcDO', {p: lnName + '.' + r.doName, fc})};
+    }
+    return {node, fc};
+  }
+
+  function pathInfo(n){
+    const doPath = [], daPath = []; let ln = null, ld = null, ied = null; const fc = n.fc || null;
+    for (let x = n; x; x = x.parent) {
+      if (x.kind === 'DA' || x.kind === 'BDA') daPath.unshift(x.name);
+      else if (x.kind === 'DO' || x.kind === 'SDO') doPath.unshift(x.name);
+      else if (x.kind === 'LN') ln = x; else if (x.kind === 'LD') ld = x; else if (x.kind === 'IED') ied = x;
+    }
+    return {ied, ld, ln, fc, doPath, daPath};
+  }
+  function dotPath(n){
+    const p = pathInfo(n);
+    let s = (p.ld ? p.ld.inst + '/' : '') + (p.ln ? p.ln.name : '');
+    const rest = p.doPath.concat(p.daPath); if (rest.length) s += '.' + rest.join('.');
+    if (p.fc) s += ' [' + p.fc + ']';
+    return s;
+  }
+  function mmsPath(n){
+    const p = pathInfo(n);
+    return (p.ld ? p.ld.ldName + '/' : '') + (p.ln ? p.ln.name : '') + (p.fc ? '$' + p.fc : '') + p.doPath.concat(p.daPath).map(x => '$' + x).join('');
+  }
+  function leafKey(n){
+    const p = pathInfo(n);
+    return [p.ied && p.ied.name, p.ld && p.ld.inst, p.ln && p.ln.name, p.fc, p.doPath.join('.'), p.daPath.join('.')].join('|');
+  }
+  return {decode, build, child, pathInfo, dotPath, mmsPath, leafKey};
+})();
+
+/* =====================================================================
+ * Matcher — Excel 路徑依 ICD 資料模型結構化解析
+ * ===================================================================== */
+const Matcher = (() => {
+  const SPLIT = /[.\/$]/;
+  function prefixOK(P, ln){
+    const ld = ln.parent, ied = ld.parent;
+    const I = ied.name, L = ld.inst, N = ld.ldName, N2 = I + L;
+    if (P.length === 0) return true;
+    if (P.length === 1) return P[0] === L || P[0] === N || P[0] === N2 || P[0] === I;
+    if (P.length === 2) return P[0] === I && (P[1] === L || P[1] === N || P[1] === N2);
+    return false;
+  }
+  function ciChild(n, s){ const ls = s.toLowerCase(); return n.children.find(c => c.name.toLowerCase() === ls); }
+
+  function match(M, s){
+    let fcBr = null;
+    const mb = s.match(/\[([A-Za-z]{2})\]$/);
+    if (mb) { fcBr = mb[1]; s = s.slice(0, -mb[0].length); }
+    const toks = s.split(SPLIT);
+    if (toks.some(x => x === '')) return {status: 'invalid', msg: t('m.empty'), results: []};
+    const fcTokens = new Set([...STD_FC, ...M.fcsAll]);
+    const results = []; let best = {depth: -1, msg: ''};
+    const fail = (depth, msg) => { if (depth > best.depth) best = {depth, msg}; };
+
+    function walk(node, k, fc, fcUsed){
+      if (k === toks.length) {
+        if (fc) {
+          if ((node.kind === 'DA' || node.kind === 'BDA') && node.fc !== fc) return fail(k, t('m.fcMis', {n: node.name, a: node.fc, b: fc}));
+          if (node.fcs && !node.fcs.has(fc)) return fail(k, t('m.noFc', {k: node.kind, n: node.name, fc}));
+        }
+        results.push({node, fc});
+        return;
+      }
+      const tok = toks[k]; let any = false;
+      const c = SCL.child(node, tok);
+      if (c) {
+        if (fc && (c.kind === 'DA' || c.kind === 'BDA') && c.fc !== fc) fail(k + 1, t('m.fcMis', {n: c.name, a: c.fc, b: fc}));
+        else { any = true; walk(c, k + 1, fc, fcUsed); }
+      }
+      if (!fcUsed && !fc && fcTokens.has(tok)) {
+        const ok = node.fcs ? node.fcs.has(tok) : node.fc === tok;
+        if (ok) { any = true; walk(node, k + 1, tok, true); }
+        else fail(k + 1, t('m.noFc', {k: node.kind, n: node.name, fc: tok}));
+      }
+      if (!any && !c) {
+        const h = ciChild(node, tok);
+        fail(k, t('m.notIn', {t: tok, k: node.kind, n: node.name}) + (node.typeId ? t('m.typeOf', {id: node.typeId}) : '') + (h ? t('m.caseHint', {n: h.name}) : ''));
+      }
+    }
+
+    let lnFound = false;
+    for (let i = 0; i < toks.length && i <= 3; i++) {
+      const cands = M.lnIndex.get(toks[i]); if (!cands) continue;
+      const P = toks.slice(0, i);
+      for (const ln of cands) {
+        lnFound = true;
+        if (!prefixOK(P, ln)) { fail(i, t('m.prefix', {ln: toks[i], p: P.join('/')})); continue; }
+        if (ln.err) { fail(i + 1, t('m.lnErr', {n: ln.name, e: ln.err})); continue; }
+        walk(ln, i + 1, fcBr, !!fcBr);
+      }
+    }
+    const uniq = new Map(); for (const r of results) uniq.set(r.node.id + '|' + (r.fc || ''), r);
+    const res = [...uniq.values()];
+    if (!res.length) {
+      let msg = best.msg;
+      if (!lnFound) {
+        msg = t('m.noLN');
+        const lower = toks.map(x => x.toLowerCase());
+        for (const name of M.lnIndex.keys()) if (lower.includes(name.toLowerCase())) { msg += t('m.lnCase', {n: name}); break; }
+      }
+      return {status: 'unmatched', msg, results: []};
+    }
+    if (res.length > 1) return {status: 'ambiguous', msg: t('m.amb', {n: res.length}) + res.slice(0, 6).map(r => SCL.dotPath(r.node) + (r.fc && !r.node.fc ? ' [' + r.fc + ']' : '')).join(t('m.sep')) + (res.length > 6 ? ' …' : ''), results: res};
+    return {status: 'matched', msg: '', results: res};
+  }
+  return {match};
+})();
+
+/* =====================================================================
+ * Engine — Mark & Sweep 白名單篩選與 ICD 輸出
+ * ===================================================================== */
+const Engine = (() => {
+  const up = (n, kind) => { while (n && n.kind !== kind) n = n.parent; return n; };
+  const topDA = n => { while (n && n.kind === 'BDA') n = n.parent; return n && n.kind === 'DA' ? n : null; };
+  const rcbKey = c => `${c.ld.inst}/${c.ln.name}.${c.name}`;
+
+  /**
+   * opt: {granularity, rcb:'auto'|'keepAll'|'none'|'custom', rcbSel:Set<rcbKey>|null, ambiguous, control, qt,
+   *       removeEmptyLD, removeUnusedTypes, reuseIds, history}
+   */
+  function analyze(M, entries, opt){
+    const t0 = performance.now();
+    const L = M.leaves, N = L.length;
+    const st = new Uint8Array(N);          // 0 移除, 1 Excel 白名單, 2 相依保留
+    const reasons = new Map(), src = new Map();
+    const addReason = (i, r) => { let s = reasons.get(i); if (!s) { s = new Set(); reasons.set(i, s); } if (s.size < 8) s.add(r); };
+    function mark(node, fc, level, why, row){
+      for (let i = node.leafStart; i < node.leafEnd; i++) {
+        if (fc && L[i].fc !== fc) continue;
+        if (level === 1) { st[i] = 1; if (row != null) { let a = src.get(i); if (!a) src.set(i, a = []); if (a.length < 10 && !a.includes(row)) a.push(row); } }
+        else { if (st[i] === 0) st[i] = 2; if (why && st[i] === 2) addReason(i, why); }
+      }
+    }
+    const keptSnapshot = () => { const a = []; for (let i = 0; i < N; i++) if (st[i]) a.push(i); return a; };
+
+    /* 1. Excel 白名單 */
+    for (const e of entries) if (e.status === 'matched') for (const r of e.results) mark(r.node, r.fc, 1, null, e.row);
+    for (const e of entries) if (e.status === 'ambiguous' && opt.ambiguous === 'keep') for (const r of e.results) mark(r.node, r.fc, 2, reason('r.amb', t('r.ambD', {row: e.row, v: e.norm})));
+    const wl = st.slice();
+
+    /* 2. q/t 兄弟屬性 */
+    if (opt.qt) {
+      const seen = new Set();
+      for (const i of keptSnapshot()) {
+        const d = topDA(L[i]); if (!d || (d.fc !== 'ST' && d.fc !== 'MX') || d.name === 'q' || d.name === 't') continue;
+        const k = d.parent.id + d.fc; if (seen.has(k)) continue; seen.add(k);
+        for (const nm of ['q', 't']) { const s = SCL.child(d.parent, nm); if (s && s.fc === d.fc) mark(s, null, 2, reason('r.qt', t('r.qtD', {n: nm}))); }
+      }
+    }
+    /* 3. 控制完整性 */
+    if (opt.control) {
+      const seen = new Set();
+      for (const i of keptSnapshot()) {
+        if (L[i].fc !== 'CO') continue;
+        const d = topDA(L[i]); if (!d) continue; const dobj = d.parent;
+        if (seen.has(dobj.id)) continue; seen.add(dobj.id);
+        mark(dobj, 'CO', 2, reason('r.ctl', t('r.ctlD')));
+        for (const nm of ['ctlModel', 'sboTimeout', 'sboClass', 'operTimeout']) { const s = SCL.child(dobj, nm); if (s) mark(s, null, 2, reason('r.ctl', nm)); }
+      }
+    }
+    /* 4. ReportControl 與 DataSet：
+     *    - ReportControl 依選項決定保留（auto：其 DataSet 含白名單資料才保留）
+     *    - DataSet 只在被保留的控制區塊使用時保留（GOOSE/SV/Log 使用者一律保留）
+     *    - 保留的 DataSet 不刪減成員，成員全部相依保留（Report/DataSet 須與 IED 一致） */
+    const dsByKey = new Map(M.datasets.map(ds => [ds.ln.id + '|' + ds.name, ds]));
+    const dsRes = new Map(M.datasets.map(ds => [ds, ds.fcdas.map(f => ({f, r: M.resolve(ds.ied.name, f)}))]));
+    const hasWl = ds => dsRes.get(ds).some(({r}) => {
+      if (!r.node) return false;
+      for (let i = r.node.leafStart; i < r.node.leafEnd; i++) if (wl[i] && (!r.fc || L[i].fc === r.fc)) return true;
+      return false;
+    });
+    const rcbKeep = new Set(), rcbInfo = [];
+    for (const c of M.controls) {
+      if (c.tag !== 'ReportControl') continue;
+      const ds = c.datSet ? dsByKey.get(c.ln.id + '|' + c.datSet) : null;
+      const wlHit = ds ? hasWl(ds) : false;
+      let keep;
+      if (opt.rcb === 'keepAll') keep = true;
+      else if (opt.rcb === 'none') keep = false;
+      else if (opt.rcb === 'custom' && opt.rcbSel) keep = opt.rcbSel.has(rcbKey(c));
+      else keep = !c.datSet || wlHit;
+      if (keep) rcbKeep.add(c);
+      rcbInfo.push({key: rcbKey(c), c, ds, wlHit, keep, nFcda: ds ? ds.fcdas.length : 0});
+    }
+    const ALWAYS = new Set(['GSEControl', 'SampledValueControl', 'LogControl']);
+    const dsKeep = new Map(); const preIssues = [];
+    for (const ds of M.datasets) {
+      let keep = false;
+      const users = ds.users.filter(u => ALWAYS.has(u.tag) || rcbKeep.has(u));
+      if (users.length) keep = true;
+      else if (!ds.users.length) keep = opt.rcb === 'keepAll' || ((opt.rcb === 'auto' || opt.rcb === 'custom') && hasWl(ds));
+      dsKeep.set(ds, keep);
+      if (!keep) continue;
+      const u = users.length ? users.map(x => x.name || x.tag).join(', ') : t('r.dsUnref');
+      for (const {r} of dsRes.get(ds)) {
+        if (r.node) mark(r.node, r.fc, 2, reason('r.ds', t('r.dsD', {p: `${ds.ld.inst}/${ds.ln.name}.${ds.name}`, u})));
+        else preIssues.push({level: 'warning', code: 'FCDA', msg: t('w.fcda', {p: `${ds.ld.ldName}/${ds.ln.name}.${ds.name}`, e: r.err})});
+      }
+    }
+    /* 5. 刪減粒度 */
+    if (opt.granularity !== 'leaf') {
+      const seen = new Set();
+      for (const i of keptSnapshot()) {
+        let n, fc = null, why;
+        if (opt.granularity === 'da') { n = topDA(L[i]); why = reason('r.gran', t('r.granDA')); }
+        else { n = up(L[i], 'DO'); if (opt.granularity === 'dofc') { fc = L[i].fc; why = reason('r.gran', t('r.granDOFC')); } else why = reason('r.gran', t('r.granDO')); }
+        if (!n) continue; const k = n.id + '|' + fc; if (seen.has(k)) continue; seen.add(k);
+        mark(n, fc, 2, why);
+      }
+    }
+    /* 6. LN / LDevice 保留判定（SCL 結構需求） */
+    const ps = new Int32Array(N + 1);
+    const recount = () => { for (let i = 0; i < N; i++) ps[i + 1] = ps[i] + (st[i] ? 1 : 0); };
+    recount();
+    const keptN = n => ps[n.leafEnd] - ps[n.leafStart];
+    const forcedLN = new Set();
+    for (const ds of M.datasets) if (dsKeep.get(ds)) forcedLN.add(ds.ln);
+    for (const c of M.controls) if (c.tag === 'GSEControl' || c.tag === 'SampledValueControl' || rcbKeep.has(c)) forcedLN.add(c.ln);
+    const ldKeep = new Set(), lnKeep = new Set(); const warns = [];
+    for (const ied of M.ieds) {
+      let any = false;
+      for (const ld of ied.children) {
+        const k = keptN(ld) > 0 || ld.children.some(ln => forcedLN.has(ln)) || !opt.removeEmptyLD;
+        if (k) { ldKeep.add(ld); any = true; }
+      }
+      if (!any && ied.children.length) {
+        ldKeep.add(ied.children[0]);
+        warns.push({level: 'warning', code: 'IED_EMPTY', msg: t('w.iedEmpty', {i: ied.name, ld: ied.children[0].ldName})});
+      }
+    }
+    function minimalLeaf(ln){
+      for (const nm of ['Mod', 'Beh', 'Health']) {
+        const d = SCL.child(ln, nm); if (!d) continue;
+        const sv = SCL.child(d, 'stVal'); if (sv && sv.leaf) return sv;
+        if (d.leafEnd > d.leafStart) return L[d.leafStart];
+      }
+      return ln.leafEnd > ln.leafStart ? L[ln.leafStart] : null;
+    }
+    for (const ld of ldKeep) for (const ln of ld.children) {
+      const need = ln.isLN0 || forcedLN.has(ln) || keptN(ln) > 0;
+      if (!need) continue;
+      lnKeep.add(ln);
+      if (keptN(ln) === 0 && !ln.err) {
+        const lf = minimalLeaf(ln);
+        if (lf) mark(lf, null, 2, reason('r.min', ln.isLN0 ? t('r.minLN0') : t('r.minLN')));
+      }
+    }
+    recount();
+
+    /* 7. 型別精簡計畫（必要時複製共用型別） */
+    const full = n => keptN(n) === n.leafEnd - n.leafStart;
+    const sigIds = new Map(), sigs = [], nodeSig = new Int32Array(M.nodes.length).fill(-1);
+    const tkind = n => n.kind === 'LN' ? 'ln' : (n.kind === 'DO' || n.kind === 'SDO') ? 'do' : 'da';
+    const hasType = c => !c.leaf && !c.err && (c.kind === 'DO' || c.kind === 'SDO' || c.kind === 'DA' || c.kind === 'BDA');
+    function sigOf(n){
+      if (nodeSig[n.id] >= 0) { sigs[nodeSig[n.id]].count++; return nodeSig[n.id]; }
+      const kind = tkind(n); let key, children = null, isFull = false;
+      if (full(n)) { key = kind + '|' + n.typeId + '|FULL'; isFull = true; }
+      else {
+        children = new Map(); const parts = [];
+        for (const c of n.children) {
+          if (!keptN(c)) continue;
+          const cs = hasType(c) ? sigOf(c) : -1;
+          children.set(c.name, cs); parts.push(c.name + ':' + cs);
+        }
+        key = kind + '|' + n.typeId + '|' + parts.join(',');
+      }
+      let id = sigIds.get(key);
+      if (id == null) { id = sigs.length; sigIds.set(key, id); sigs.push({id, kind, typeId: n.typeId, full: isFull, children, count: 0}); }
+      sigs[id].count++; nodeSig[n.id] = id; return id;
+    }
+    for (const ln of lnKeep) if (!ln.err && ln.leafEnd > ln.leafStart) sigOf(ln);
+    const byType = new Map();
+    for (const s of sigs) { const k = s.kind + '|' + s.typeId; if (!byType.has(k)) byType.set(k, []); byType.get(k).push(s); }
+    const usedIds = new Set(M.allTypeIds); const assigned = new Map();
+    const plan = {clones: []};
+    for (const list of byType.values()) {
+      const typeId = list[0].typeId;
+      let orig = list.find(s => s.full);
+      if (!orig && opt.reuseIds) orig = list.slice().sort((a, b) => b.count - a.count)[0];
+      let k = 1;
+      for (const s of list) {
+        if (s === orig) { assigned.set(s.id, typeId); continue; }
+        let nid; do { nid = `${typeId}_F${k++}`; } while (usedIds.has(nid));
+        usedIds.add(nid); assigned.set(s.id, nid); plan.clones.push(s);
+      }
+    }
+
+    /* 8. 建立輸出文件（重新解析原始文字，原始 ICD 不變） */
+    const out = parseXml(M.text);
+    const outAll = Array.from(out.getElementsByTagName('*'));
+    const O = el => outAll[M.elIndex.get(el)];
+    const ns = M.ns;
+    const tmplOf = s => M.T[s.kind].get(s.typeId);
+    const counts = {ldRemoved: 0, lnRemoved: 0, dsRemoved: 0, rcbRemoved: 0, instRemoved: 0, lnodeRemoved: 0, typesRemoved: {ln: 0, do: 0, da: 0, en: 0}, typesModified: 0, typesCloned: 0};
+    function reduceTypeEl(el, s){
+      for (const c of Array.from(el.children)) {
+        if (c.namespaceURI !== ns || !/^(DO|SDO|DA|BDA)$/.test(c.localName)) continue;
+        const nm = c.getAttribute('name');
+        if (!s.children.has(nm)) { removeEl(c); continue; }
+        const cs = s.children.get(nm);
+        if (cs >= 0) { const nid = assigned.get(cs); if (nid && c.getAttribute('type') !== nid) c.setAttribute('type', nid); }
+      }
+    }
+    const lastInserted = new Map();
+    for (const s of plan.clones) {
+      const ty = tmplOf(s); const anchor = lastInserted.get(ty) || O(ty.el);
+      const cl = out.importNode(ty.el, true); cl.setAttribute('id', assigned.get(s.id));
+      const ws = anchor.previousSibling && anchor.previousSibling.nodeType === 3 ? anchor.previousSibling.nodeValue : '\n';
+      anchor.after(out.createTextNode(ws), cl);
+      reduceTypeEl(cl, s);
+      lastInserted.set(ty, cl); counts.typesCloned++;
+    }
+    for (const s of sigs) {
+      if (assigned.get(s.id) !== s.typeId || s.full) continue;
+      reduceTypeEl(O(tmplOf(s).el), s); counts.typesModified++;
+    }
+    function pruneInst(el, node){
+      for (const c of Array.from(el.children)) {
+        if (c.namespaceURI !== ns) continue;
+        const tag = c.localName; if (tag !== 'DOI' && tag !== 'SDI' && tag !== 'DAI') continue;
+        const ch = SCL.child(node, c.getAttribute('name'));
+        if (!ch) continue;                      // 原本即無法解析：保留不動，交由驗證報告
+        if (!keptN(ch)) { removeEl(c); counts.instRemoved++; }
+        else if (tag !== 'DAI' && !ch.leaf) {
+          const had = c.firstElementChild != null;
+          pruneInst(c, ch);
+          // 子元素全被移除且沒有 name/ix 以外的屬性（例如 desc）→ 移除空的 DOI/SDI
+          if (had && !c.firstElementChild && [...c.attributes].every(a => a.name === 'name' || a.name === 'ix')) { removeEl(c); counts.instRemoved++; }
+        }
+      }
+    }
+    for (const ld of M.lds) {
+      if (!ldKeep.has(ld)) { removeEl(O(ld.el)); counts.ldRemoved++; counts.lnRemoved += ld.children.length; continue; }
+      for (const ln of ld.children) {
+        if (!lnKeep.has(ln)) { removeEl(O(ln.el)); counts.lnRemoved++; continue; }
+        if (ln.err || ln.leafEnd === ln.leafStart) continue;
+        const nid = assigned.get(nodeSig[ln.id]);
+        const oel = O(ln.el);
+        if (nid && nid !== ln.typeId) oel.setAttribute('lnType', nid);
+        if (!full(ln)) pruneInst(oel, ln);
+      }
+    }
+    const alive = x => ldKeep.has(x.ld) && lnKeep.has(x.ln);
+    // ReportControl
+    const rcbRemovedList = [];
+    for (const c of M.controls) if (c.tag === 'ReportControl' && !rcbKeep.has(c) && alive(c)) { removeEl(O(c.el)); counts.rcbRemoved++; rcbRemovedList.push(rcbKey(c)); }
+    if (rcbRemovedList.length) warns.push({level: 'warning', code: 'RCB', msg: t('w.rcb', {n: rcbRemovedList.length, list: rcbRemovedList.slice(0, 15).join(', ') + (rcbRemovedList.length > 15 ? ' …' : '')})});
+    // SettingControl（定值群組控制區塊，SGCB → Elipse 的 SP 節點）
+    const sgcbRemovedList = [];
+    if (opt.removeSgcb) for (const c of M.controls) if (c.tag === 'SettingControl' && alive(c)) { removeEl(O(c.el)); sgcbRemovedList.push(`${c.ld.inst}/${c.ln.name}`); }
+    counts.sgcbRemoved = sgcbRemovedList.length;
+    if (sgcbRemovedList.length) warns.push({level: 'warning', code: 'SGCB', msg: t('w.sgcb', {n: sgcbRemovedList.length, list: sgcbRemovedList.join(', ')})});
+    // DataSet
+    for (const ds of M.datasets) if (!dsKeep.get(ds) && alive(ds)) { removeEl(O(ds.el)); counts.dsRemoved++; }
+    // Substation LNode 失效參照
+    const lnodeRemovedList = [];
+    for (const x of M.lnodes) {
+      if (!x.iedName || x.iedName === 'None') continue;
+      const r = M.resolve(x.iedName, {ldInst: x.ldInst, prefix: x.prefix, lnClass: x.lnClass, lnInst: x.lnInst});
+      if (r.node && (!lnKeep.has(r.node) || !ldKeep.has(r.node.parent))) { removeEl(O(x.el)); counts.lnodeRemoved++; lnodeRemovedList.push(`${x.iedName}/${x.ldInst}/${x.prefix}${x.lnClass}${x.lnInst}`); }
+    }
+    if (counts.lnodeRemoved) warns.push({level: 'warning', code: 'LNODE', msg: t('w.lnode', {n: counts.lnodeRemoved, list: lnodeRemovedList.slice(0, 10).join(', ') + (lnodeRemovedList.length > 10 ? ' …' : '')})});
+    // ExtRef 指向本檔 IED 且被刪除的資料 → 警告
+    for (const x of M.extRefs) {
+      if (!x.iedName || !M.ieds.some(i => i.name === x.iedName) || !x.lnClass) continue;
+      if (!ldKeep.has(x.ln.parent) || !lnKeep.has(x.ln)) continue;
+      const r = M.resolve(x.iedName, x);
+      if (r.node && keptN(r.node) === 0) warns.push({level: 'warning', code: 'EXTREF', msg: t('w.extref', {p: x.ln.parent.ldName + '/' + x.ln.name, t: SCL.dotPath(r.node)})});
+    }
+    // 掃除未被參照的型別
+    const dtt = sclKid(out.documentElement, ns, 'DataTypeTemplates');
+    if (dtt && opt.removeUnusedTypes) {
+      const map = {LNodeType: new Map(), DOType: new Map(), DAType: new Map(), EnumType: new Map()};
+      for (const e of sclKids(dtt, ns)) if (map[e.localName]) map[e.localName].set(e.getAttribute('id'), e);
+      const reach = new Set(); const q = [];
+      const visit = (tag, id) => { const e = map[tag].get(id); if (e && !reach.has(e)) { reach.add(e); q.push(e); } };
+      for (const tag of ['LN0', 'LN']) for (const e of out.getElementsByTagNameNS(ns, tag)) visit('LNodeType', e.getAttribute('lnType'));
+      while (q.length) {
+        const e = q.pop();
+        for (const c of sclKids(e, ns)) {
+          const ty = c.getAttribute('type'); if (!ty) continue;
+          if (c.localName === 'DO' || c.localName === 'SDO') visit('DOType', ty);
+          else if (c.localName === 'DA' || c.localName === 'BDA') { const b = c.getAttribute('bType'); if (b === 'Struct') visit('DAType', ty); else if (b === 'Enum') visit('EnumType', ty); }
+        }
+      }
+      const K = {LNodeType: 'ln', DOType: 'do', DAType: 'da', EnumType: 'en'};
+      for (const tag in map) for (const e of map[tag].values()) if (!reach.has(e)) { removeEl(e); counts.typesRemoved[K[tag]]++; }
+    }
+    // Header/History
+    if (opt.history) {
+      const hdr = sclKid(out.documentElement, ns, 'Header');
+      if (hdr) {
+        const q = hdr.prefix ? hdr.prefix + ':' : '';
+        let hist = sclKid(hdr, ns, 'History');
+        if (!hist) { hist = out.createElementNS(ns, q + 'History'); hdr.appendChild(hist); }
+        const hi = out.createElementNS(ns, q + 'Hitem');
+        hi.setAttribute('version', hdr.getAttribute('version') || '1');
+        hi.setAttribute('revision', hdr.getAttribute('revision') || '');
+        hi.setAttribute('when', new Date().toISOString());
+        hi.setAttribute('what', 'Filtered by IEC 61850 ICD Tag Filter (whitelist-based subtractive filtering)');
+        hi.setAttribute('why', 'Reduce driver tags according to Excel I/O list');
+        hist.appendChild(hi);
+      }
+    }
+    let xmlText = new XMLSerializer().serializeToString(out).replace(/^\s*<\?xml[^?]*\?>\s*/, '');
+    xmlText = '<?xml version="1.0" encoding="UTF-8"?>\n' + xmlText;
+
+    /* 9. 驗證：原始 vs 輸出 + 回讀比對 */
+    const valOrig = Validator.validate(M);
+    let Mo = null, valOut = []; const rtIssues = [];
+    try {
+      Mo = SCL.build(xmlText);
+      valOut = Validator.validate(Mo);
+      const expect = new Set(); for (let i = 0; i < N; i++) if (st[i]) expect.add(SCL.leafKey(L[i]));
+      const got = new Set(Mo.leaves.map(SCL.leafKey));
+      const missing = [...expect].filter(k => !got.has(k)), extra = [...got].filter(k => !expect.has(k));
+      if (missing.length) rtIssues.push({level: 'error', code: 'ROUNDTRIP', msg: t('w.rtMissing', {n: missing.length, ex: missing.slice(0, 3).join(' ; ')})});
+      if (extra.length) rtIssues.push({level: 'error', code: 'ROUNDTRIP', msg: t('w.rtExtra', {n: extra.length, ex: extra.slice(0, 3).join(' ; ')})});
+    } catch (e) {
+      rtIssues.push({level: 'error', code: 'OUT_PARSE', msg: t('w.outParse') + e.message});
+    }
+    const origKeys = new Set(valOrig.map(x => x.code + '|' + x.msg));
+    const issues = [];
+    for (const x of valOrig) issues.push(Object.assign({src: 'pre'}, x));
+    for (const x of valOut) if (!origKeys.has(x.code + '|' + x.msg)) issues.push(Object.assign({src: 'new'}, x));
+    for (const x of preIssues) issues.push(Object.assign({src: 'pre'}, x));
+    for (const x of warns) issues.push(Object.assign({src: 'new'}, x));
+    for (const x of rtIssues) issues.push(Object.assign({src: 'new'}, x));
+    const blocking = issues.filter(x => x.src === 'new' && x.level === 'error');
+
+    /* 10. 統計 */
+    let c1 = 0, c2 = 0; for (let i = 0; i < N; i++) { if (st[i] === 1) c1++; else if (st[i] === 2) c2++; }
+    const depCat = new Map();
+    for (const [i, set] of reasons) if (st[i] === 2) { const cat = [...set][0].split(SEP)[0]; depCat.set(cat, (depCat.get(cat) || 0) + 1); }
+    const rcbAll = M.controls.filter(c => c.tag === 'ReportControl');
+    const stats = {
+      total: N, excel: c1, dep: c2, kept: c1 + c2, removed: N - c1 - c2,
+      ldBefore: M.lds.length, ldAfter: ldKeep.size, lnBefore: M.lns.length, lnAfter: lnKeep.size,
+      dsBefore: M.datasets.length, dsAfter: M.datasets.filter(ds => dsKeep.get(ds) && alive(ds)).length,
+      rcbBefore: rcbAll.length, rcbAfter: rcbAll.filter(c => rcbKeep.has(c) && alive(c)).length,
+      sgcbBefore: M.controls.filter(c => c.tag === 'SettingControl').length,
+      sgcbAfter: opt.removeSgcb ? 0 : M.controls.filter(c => c.tag === 'SettingControl' && alive(c)).length,
+      ...counts, outLeaves: Mo ? Mo.leaves.length : null,
+      outBytes: new Blob([xmlText]).size, ms: Math.round(performance.now() - t0)
+    };
+    return {st, reasons, src, dsKeep, rcbKeep, rcbInfo, ldKeep, lnKeep, xmlText, issues, blocking, stats, depCat};
+  }
+  return {analyze, rcbKey};
+})();
+
+/* =====================================================================
+ * Validator — SCL 結構與參照檢查（不是 XSD Schema 驗證）
+ * ===================================================================== */
+const Validator = (() => {
+  function validate(M){
+    const iss = M.issues.slice(); const seen = new Set(iss.map(x => x.code + '|' + x.msg));
+    const push = (level, code, msg) => { const k = code + '|' + msg; if (!seen.has(k)) { seen.add(k); iss.push({level, code, msg}); } };
+    const ns = M.ns, T = M.T;
+    for (const ty of T.ln.values()) {
+      if (!ty.children.length) push('error', 'EMPTY_LNT', t('v.emptyLnt', {id: ty.id}));
+      const names = new Set();
+      for (const c of ty.children) {
+        if (names.has(c.name)) push('error', 'DUP_NAME', t('v.dupDo', {id: ty.id, n: c.name})); names.add(c.name);
+        if (!T.do.has(c.type)) push('error', 'REF_DOT', t('v.lntRef', {id: ty.id, n: c.name, t: c.type}));
+      }
+    }
+    const chkDA = (owner, c) => {
+      if (c.bType === 'Struct' && !T.da.has(c.type)) push('error', 'REF_DAT', t('v.datRef', {o: owner, n: c.name, t: c.type}));
+      if (c.bType === 'Enum' && !T.en.has(c.type)) push('error', 'REF_ENUM', t('v.enumRef', {o: owner, n: c.name, t: c.type}));
+    };
+    for (const ty of T.do.values()) {
+      const names = new Set();
+      for (const c of ty.children) {
+        if (names.has(c.name)) push('error', 'DUP_NAME', t('v.dupName', {id: ty.id, n: c.name})); names.add(c.name);
+        if (c.tag === 'SDO' && !T.do.has(c.type)) push('error', 'REF_DOT', t('v.sdoRef', {id: ty.id, n: c.name, t: c.type}));
+        if (c.tag === 'DA') chkDA('DOType "' + ty.id + '"', c);
+      }
+    }
+    for (const ty of T.da.values()) {
+      if (!ty.children.length) push('error', 'EMPTY_DAT', t('v.emptyDat', {id: ty.id}));
+      for (const c of ty.children) chkDA('DAType "' + ty.id + '"', c);
+    }
+    for (const ty of T.en.values()) if (!sclKids(ty.el, ns, 'EnumVal').length) push('warning', 'EMPTY_ENUM', t('v.emptyEnum', {id: ty.id}));
+
+    const iedNames = new Set();
+    for (const ied of M.ieds) {
+      if (iedNames.has(ied.name)) push('error', 'DUP_IED', t('v.dupIed', {n: ied.name})); iedNames.add(ied.name);
+      for (const ap of ied.aps) if (ap.server && !sclKids(ap.server, ns, 'LDevice').length) push('error', 'NO_LD', t('v.noLd', {i: ied.name, a: ap.name}));
+      const insts = new Set();
+      for (const ld of ied.children) {
+        if (insts.has(ld.inst)) push('error', 'DUP_LD', t('v.dupLd', {i: ied.name, n: ld.inst})); insts.add(ld.inst);
+        const n0 = sclKids(ld.el, ns, 'LN0').length;
+        if (n0 !== 1) push('error', 'LN0', t('v.ln0', {ld: ld.ldName, n: n0}));
+        const lnNames = new Set();
+        for (const ln of ld.children) {
+          if (lnNames.has(ln.name)) push('error', 'DUP_LN', t('v.dupLn', {ld: ld.ldName, n: ln.name})); lnNames.add(ln.name);
+          if (!ln.err) checkInst(ln.el, ln, `${ld.ldName}/${ln.name}`);
+        }
+      }
+    }
+    function checkInst(el, node, where){
+      for (const c of sclKids(el, ns)) {
+        const tag = c.localName; if (tag !== 'DOI' && tag !== 'SDI' && tag !== 'DAI') continue;
+        const nm = c.getAttribute('name'); const ch = SCL.child(node, nm);
+        if (!ch) { push('error', 'INST_REF', t('v.inst', {w: where, tag, n: nm})); continue; }
+        if (tag !== 'DAI' && !ch.leaf) checkInst(c, ch, where + '.' + nm);
+      }
+    }
+    for (const ds of M.datasets) for (const f of ds.fcdas) { const r = M.resolve(ds.ied.name, f); if (!r.node) push('error', 'FCDA', t('v.fcda', {p: `${ds.ld.ldName}/${ds.ln.name}.${ds.name}`, e: r.err})); }
+    const dsNames = new Map(); for (const ds of M.datasets) { const k = ds.ln.id + '|' + ds.name; if (dsNames.has(k)) push('error', 'DUP_DS', t('v.dupDs', {p: `${ds.ld.ldName}/${ds.ln.name}.${ds.name}`})); dsNames.set(k, ds); }
+    for (const c of M.controls) if (c.datSet && !dsNames.has(c.ln.id + '|' + c.datSet)) push('error', 'DATSET', t('v.datset', {tag: c.tag, n: c.name, p: `${c.ld.ldName}/${c.ln.name}`, ds: c.datSet}));
+    for (const cap of M.comms) {
+      const ied = M.ieds.find(i => i.name === cap.iedName);
+      if (!ied) continue;
+      if (!ied.aps.some(a => a.name === cap.apName)) push('warning', 'CAP', t('v.cap', {p: `${cap.iedName}/${cap.apName}`}));
+      for (const b of cap.blocks) {
+        const ld = ied.children.find(l => l.inst === b.ldInst);
+        const tag = b.tag === 'GSE' ? 'GSEControl' : 'SampledValueControl';
+        if (!ld || !M.controls.some(c => c.tag === tag && c.ld === ld && c.ln.isLN0 && c.name === b.cbName)) push('error', 'COMM_CB', t('v.commCb', {tag: b.tag, p: `${cap.iedName} ${b.ldInst}/${b.cbName}`}));
+      }
+    }
+    for (const x of M.lnodes) {
+      if (!x.iedName || x.iedName === 'None' || !M.ieds.some(i => i.name === x.iedName)) continue;
+      const r = M.resolve(x.iedName, {ldInst: x.ldInst, prefix: x.prefix, lnClass: x.lnClass, lnInst: x.lnInst});
+      if (!r.node) push('warning', 'LNODE', t('v.lnode', {e: r.err}));
+    }
+    return iss;
+  }
+  return {validate};
+})();
+
+/* =====================================================================
+ * VList — 虛擬化清單（只渲染可視範圍的列）
+ * ===================================================================== */
+class VList {
+  constructor(el, rowH, render){
+    this.el = el; this.rowH = rowH; this.render = render; this.n = 0;
+    el.innerHTML = ''; this.inner = document.createElement('div'); this.inner.className = 'vinner'; el.appendChild(this.inner);
+    el.addEventListener('scroll', () => this.draw());
+    new ResizeObserver(() => this.draw()).observe(el);
+  }
+  setCount(n, keepScroll){ this.n = n; this.inner.style.height = (n * this.rowH) + 'px'; if (!keepScroll) this.el.scrollTop = 0; this.draw(); }
+  draw(){
+    const top = this.el.scrollTop, h = this.el.clientHeight || 600;
+    const s = Math.max(0, Math.floor(top / this.rowH) - 8), e = Math.min(this.n, Math.ceil((top + h) / this.rowH) + 8);
+    let html = ''; for (let i = s; i < e; i++) html += this.render(i, i * this.rowH);
+    this.inner.innerHTML = html;
+  }
+}
+
+/* =====================================================================
+ * UI
+ * ===================================================================== */
+const S = {M: null, icdName: '', icdText: null, wb: null, xlName: '', rows: null, entries: [], R: null, rcbSel: null,
+  expanded: new Set(), sel: null, treeRows: [], cntCache: new Map(), matchRows: [], depRows: [], valRows: [], status: {}};
+const busy = on => $('#busy').classList.toggle('on', on);
+const nextFrame = () => new Promise(r => setTimeout(r, 30));
+/** 狀態列：以函式產生訊息，切換語系時可重新產生 */
+function setStatus(id, gen, cls){ S.status[id] = {gen, cls}; const el = $(id); el.textContent = gen(); el.className = 'status ' + (cls || ''); }
+function getOpt(){
+  return {granularity: $('#optGran').value, rcb: $('#optRcb').value, rcbSel: S.rcbSel, ambiguous: $('#optAmb').value,
+    control: $('#optCtl').checked, qt: $('#optQt').checked, removeSgcb: $('#optSgcb').checked, removeEmptyLD: $('#optLd').checked,
+    removeUnusedTypes: $('#optTypes').checked, reuseIds: $('#optReuse').checked, history: $('#optHist').checked};
+}
+
+/* ---- 語系 ---- */
+function applyStatic(){
+  document.documentElement.lang = LANG === 'en' ? 'en' : 'zh-Hant';
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-html]').forEach(el => { el.innerHTML = t(el.dataset.i18nHtml); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  for (const [id, s] of Object.entries(S.status)) { const el = $(id); el.textContent = s.gen(); }
+  $('#helpDoc').innerHTML = LANG === 'en' ? HELP_EN : HELP_ZH;
+  if (!S.sel) $('#details').innerHTML = `<span class="hint">${esc(t('details.hint'))}</span>`;
+}
+function setLang(l){
+  LANG = l === 'en' ? 'en' : 'zh';
+  try { localStorage.setItem('icdfilter.lang', LANG); } catch (e) {}
+  $('#selLang').value = LANG;
+  applyStatic();
+  // 模型、比對與分析訊息都以目前語系產生 → 重新建立（保留展開狀態）
+  if (S.icdText) {
+    const exp = S.expanded;
+    try { loadIcdText(S.icdName, S.icdText, true); S.expanded = exp; } catch (e) {}
+  } else renderAll();
+}
+$('#selLang').addEventListener('change', () => { busy(true); setTimeout(() => { setLang($('#selLang').value); busy(false); }, 30); });
+
+/* ---- 檔案載入 ---- */
+$('#fIcd').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  busy(true); await nextFrame();
+  try { loadIcdText(f.name, SCL.decode(await f.arrayBuffer())); }
+  catch (e) { S.M = null; S.icdText = null; const m = e.message; setStatus('#icdStatus', () => '✖ ' + m, 'err'); renderAll(); }
+  busy(false);
+});
+function loadIcdText(name, text, keepView){
+  const M = SCL.build(text);
+  S.M = M; S.icdName = name; S.icdText = text; S.sel = null;
+  if (!keepView) {
+    S.expanded = new Set(); S.rcbSel = null;
+    for (const ied of M.ieds) { S.expanded.add(key({node: ied, fc: null})); for (const ld of ied.children) S.expanded.add(key({node: ld, fc: null})); }
+  }
+  const errs = M.issues.filter(x => x.level === 'error').length;
+  const p = {name, ied: M.ieds.length, ld: M.lds.length, ln: M.lns.length, leaf: fmt(M.leaves.length), ds: M.datasets.length, rcb: M.controls.filter(c => c.tag === 'ReportControl').length};
+  setStatus('#icdStatus', () => t('icd.ok', p) + (errs ? t('icd.errs', {n: errs}) : ''), errs ? 'warn' : 'ok');
+  rematch(); runAnalysis();
+}
+$('#fXl').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  busy(true); await nextFrame();
+  try { await loadExcelBuffer(f.name, await f.arrayBuffer()); }
+  catch (e) { S.wb = null; const m = e.message; setStatus('#xlStatus', () => '✖ ' + m, 'err'); }
+  busy(false);
+});
+async function loadExcelBuffer(name, buf){
+  const wb = await Excel.open(buf);
+  S.wb = wb; S.xlName = name;
+  const sel = $('#selSheet'); sel.innerHTML = wb.sheets.map((s, i) => `<option value="${i}">${esc(s.name)}</option>`).join('');
+  sel.disabled = false; $('#inStart').disabled = false; $('#inPrefix').disabled = false; $('#selCol').disabled = false;
+  setStatus('#xlStatus', () => t('xl.ok', {name, fmt: wb.format.toUpperCase(), n: wb.sheets.length}), 'ok');
+  await loadSheet(0, true);
+}
+async function loadSheet(i, guess){
+  S.rows = await S.wb.loadSheet(i);
+  let maxC = 0; for (const r of S.rows) if (r && r.length > maxC) maxC = r.length;
+  // 自動猜測 Tag 欄位：含最多 "." 且無空白的儲存格；若已載入 ICD，優先以 LN 名稱命中數判斷
+  let bestC = 0, bestScore = -1, bestRow = 2;
+  if (guess) for (let c = 0; c < maxC; c++) {
+    let score = 0, firstRow = 0;
+    for (let r = 0; r < Math.min(S.rows.length, 400); r++) {
+      const v = S.rows[r] && S.rows[r][c]; if (v == null) continue; const s = String(v).trim();
+      if (/^[^\s]+\.[^\s]+$/.test(s)) {
+        let pts = 1;
+        if (S.M && s.split(/[.\/$]/).some(x => S.M.lnIndex.has(x))) pts += 3;
+        score += pts; if (!firstRow) firstRow = r + 1;
+      }
+    }
+    if (score > bestScore) { bestScore = score; bestC = c; bestRow = firstRow || 2; }
+  }
+  const header = c => { for (let r = 0; r < Math.min(S.rows.length, 5); r++) { const v = S.rows[r] && S.rows[r][c]; if (v != null && String(v).trim()) return String(v).trim().slice(0, 30); } return ''; };
+  const prevCol = +$('#selCol').value;
+  $('#selCol').innerHTML = Array.from({length: Math.max(maxC, 1)}, (_, c) => `<option value="${c}">${colName(c)}${header(c) ? ' : ' + esc(header(c)) : ''}</option>`).join('');
+  if (guess) { $('#selCol').value = String(bestC); $('#inStart').value = bestRow; }
+  else if (prevCol < maxC) $('#selCol').value = String(prevCol);
+  rematch(); runAnalysis();
+}
+$('#selSheet').addEventListener('change', async () => { busy(true); await nextFrame(); try { await loadSheet(+$('#selSheet').value, true); } catch (e) { const m = e.message; setStatus('#xlStatus', () => '✖ ' + m, 'err'); } busy(false); });
+for (const id of ['#selCol', '#inStart', '#inPrefix']) $(id).addEventListener('change', () => { rematch(); runAnalysis(); });
+for (const id of ['#optGran', '#optAmb', '#optCtl', '#optQt', '#optSgcb', '#optLd', '#optTypes', '#optReuse', '#optHist']) $(id).addEventListener('change', () => runAnalysis());
+$('#optRcb').addEventListener('change', () => {
+  // 第一次切到自訂時，以「含白名單」的判斷作為預設勾選
+  if ($('#optRcb').value === 'custom' && !S.rcbSel) S.rcbSel = new Set(S.R ? S.R.rcbInfo.filter(x => x.wlHit || !x.c.datSet).map(x => x.key) : []);
+  runAnalysis();
+});
+$('#rcbList').addEventListener('change', ev => {
+  const cb = ev.target; if (!cb.dataset || !cb.dataset.k || $('#optRcb').value !== 'custom') return;
+  if (!S.rcbSel) S.rcbSel = new Set();
+  if (cb.checked) S.rcbSel.add(cb.dataset.k); else S.rcbSel.delete(cb.dataset.k);
+  runAnalysis();
+});
+$('#btnRun').addEventListener('click', () => { rematch(); runAnalysis(); });
+
+/* ---- Excel 白名單擷取與比對 ---- */
+function extractEntries(){
+  const out = []; if (!S.rows) return out;
+  const col = +$('#selCol').value, start = Math.max(1, +$('#inStart').value || 1), prefix = $('#inPrefix').value.replace(/\s+/g, '');
+  const seen = new Map();
+  for (let r = start - 1; r < S.rows.length; r++) {
+    const v = S.rows[r] && S.rows[r][col]; if (v == null) continue;
+    const raw = String(v);
+    const norm0 = raw.replace(/[\s ​-‍﻿　]+/g, '');
+    if (!norm0) continue;
+    const norm = prefix + norm0;
+    const e = {row: r + 1, raw, norm, status: '', msg: '', results: [], leafCount: 0};
+    if (seen.has(norm)) { e.status = 'duplicate'; e.msg = t('m.dup', {r: seen.get(norm)}); }
+    else seen.set(norm, r + 1);
+    out.push(e);
+  }
+  return out;
+}
+function rematch(){
+  const prev = $('#xlPreview');
+  if (!S.rows) { prev.textContent = ''; S.entries = []; return; }
+  S.entries = extractEntries();
+  prev.textContent = S.entries.slice(0, 12).map(e => `${String(e.row).padStart(5)}  ${e.raw}`).join('\n') + (S.entries.length > 12 ? '\n' + t('pv.more', {n: S.entries.length}) : (S.entries.length ? '' : t('pv.none')));
+  if (!S.M) return;
+  for (const e of S.entries) {
+    if (e.status === 'duplicate') continue;
+    const r = Matcher.match(S.M, e.norm);
+    e.status = r.status; e.msg = r.msg; e.results = r.results;
+    e.leafCount = r.results.reduce((a, x) => { let n = 0; for (let i = x.node.leafStart; i < x.node.leafEnd; i++) if (!x.fc || S.M.leaves[i].fc === x.fc) n++; return a + n; }, 0);
+    if (r.status === 'matched') {
+      const n = r.results[0].node;
+      e.msg = n.leaf ? SCL.dotPath(n) : t('m.nonLeaf', {k: n.kind, n: e.leafCount}) + SCL.dotPath(n) + (r.results[0].fc && !n.fc ? ' [' + r.results[0].fc + ']' : '');
+    }
+  }
+}
+
+let runTimer = null;
+function runAnalysis(){
+  clearTimeout(runTimer);
+  runTimer = setTimeout(async () => {
+    $('#btnRun').disabled = !(S.M && S.rows);
+    if (!S.M || !S.rows) { S.R = null; renderAll(); return; }
+    busy(true); await nextFrame();
+    try { S.R = Engine.analyze(S.M, S.entries, getOpt()); }
+    catch (e) { console.error(e); S.R = null; alert(t('err.analysis') + e.message); }
+    S.cntCache = new Map();
+    renderAll(); busy(false);
+  }, 60);
+}
+
+/* ---- ReportControl 清單 ---- */
+function renderRcb(){
+  const list = $('#rcbList'), warn = $('#rcbWarn');
+  const mode = $('#optRcb').value;
+  if (!S.M) { list.innerHTML = ''; warn.textContent = ''; return; }
+  const rcbs = S.M.controls.filter(c => c.tag === 'ReportControl');
+  if (!rcbs.length) { list.innerHTML = `<span class="hint">${esc(t('rcb.empty'))}</span>`; warn.textContent = ''; return; }
+  const info = new Map(S.R ? S.R.rcbInfo.map(x => [x.key, x]) : []);
+  list.innerHTML = rcbs.map(c => {
+    const k = Engine.rcbKey(c), x = info.get(k);
+    const checked = x ? x.keep : true;
+    const nF = x ? x.nFcda : 0;
+    const tag = x ? (x.wlHit ? `<span class="c-keep">${esc(t('rcb.wl'))}</span>` : `<span class="c-rem">${esc(t('rcb.noWl'))}</span>`) : '';
+    return `<label><input type="checkbox" data-k="${esc(k)}" ${checked ? 'checked' : ''} ${mode === 'custom' ? '' : 'disabled'}>` +
+      `<span><span class="rk">${esc(c.name)}</span> [${c.buffered ? 'BR' : 'RP'}] ${esc(c.ld.inst + '/' + c.ln.name)} → ${esc(c.datSet || '-')} (${nF} FCDA) ${tag}</span></label>`;
+  }).join('');
+  const removed = S.R ? S.R.stats.rcbBefore - S.R.stats.rcbAfter : 0;
+  warn.textContent = removed > 0 ? t('rcb.warn', {n: removed}) : '';
+}
+
+/* ---- 樹狀圖 ---- */
+const key = it => it.kind === 'FC' ? 'F' + it.node.id + '#' + it.fc : it.node.id + '|' + (it.fc || '');
+function childrenOf(it){
+  const n = it.node;
+  if (it.kind === 'FC') return n.children.filter(d => d.fcs && d.fcs.has(it.fc)).map(d => ({node: d, fc: it.fc}));
+  if (n.kind === 'IED' || n.kind === 'LD') return n.children.map(c => ({node: c, fc: null}));
+  if (n.kind === 'LN') return [...n.fcs].sort().map(fc => ({kind: 'FC', node: n, fc}));
+  if (n.kind === 'DO' || n.kind === 'SDO') return n.children.filter(c => c.fcs ? c.fcs.has(it.fc) : c.fc === it.fc).map(c => ({node: c, fc: it.fc}));
+  return n.children.map(c => ({node: c, fc: it.fc}));
+}
+function rangeCounts(it){
+  const k = key(it); let c = S.cntCache.get(k); if (c) return c;
+  c = [0, 0, 0, 0, 0]; // total, excel, dep, removed, err
+  const n = it.node, L = S.M.leaves, st = S.R ? S.R.st : null, fc = it.fc;
+  for (let i = n.leafStart; i < n.leafEnd; i++) {
+    if (fc && L[i].fc !== fc) continue;
+    c[0]++; if (st) { const s = st[i]; if (s === 1) c[1]++; else if (s === 2) c[2]++; else c[3]++; }
+    if (L[i].err) c[4]++;
+  }
+  S.cntCache.set(k, c); return c;
+}
+function leafVisible(i, mode, q){
+  const st = S.R ? S.R.st[i] : -1, L = S.M.leaves[i];
+  if (mode === 'kept' && !(st > 0)) return false;
+  if (mode === 'excel' && st !== 1) return false;
+  if (mode === 'dep' && st !== 2) return false;
+  if (mode === 'rem' && st !== 0) return false;
+  if (mode === 'err' && !L.err) return false;
+  if (q) { if (!L._s) L._s = SCL.dotPath(L).toLowerCase(); if (!L._s.includes(q)) return false; }
+  return true;
+}
+function buildTreeRows(){
+  const rows = []; S.treeRows = rows;
+  const M = S.M; if (!M) return;
+  const mode = $('#treeFilter').value, q = $('#treeSearch').value.trim().toLowerCase();
+  const filtering = mode !== 'all' || !!q;
+  let ps = null;
+  if (filtering) { ps = new Int32Array(M.leaves.length + 1); for (let i = 0; i < M.leaves.length; i++) ps[i + 1] = ps[i] + (leafVisible(i, mode, q) ? 1 : 0); }
+  const hasVis = it => {
+    if (!filtering) return true;
+    const n = it.node;
+    if (!it.fc) return ps[n.leafEnd] - ps[n.leafStart] > 0;
+    for (let i = n.leafStart; i < n.leafEnd; i++) if (M.leaves[i].fc === it.fc && ps[i + 1] - ps[i]) return true;
+    return false;
+  };
+  const visit = (it, depth) => {
+    if (!hasVis(it)) return;
+    it.depth = depth; rows.push(it);
+    const open = q ? true : S.expanded.has(key(it));
+    if (open) for (const c of childrenOf(it)) visit(c, depth + 1);
+  };
+  for (const ied of M.ieds) visit({node: ied, fc: null}, 0);
+  if (filtering && mode === 'err') for (const ln of M.lns) if (ln.err && !rows.some(r => r.node === ln)) rows.push({node: ln, fc: null, depth: 2});
+}
+function statusClass(it){
+  const n = it.node;
+  if (n.err && it.kind !== 'FC') return 's-err';
+  if (!S.R) return '';
+  const c = rangeCounts(it);
+  if (c[0] === 0) {
+    if (n.kind === 'LN') return S.R.lnKeep.has(n) ? 's-dep' : 's-rem';
+    if (n.kind === 'LD') return S.R.ldKeep.has(n) ? 's-dep' : 's-rem';
+    return 's-rem';
+  }
+  if (c[1] > 0) return 's-keep';
+  if (c[2] > 0) return 's-dep';
+  return 's-rem';
+}
+function renderTreeRow(i, top){
+  const it = S.treeRows[i]; const n = it.node; const isLeaf = it.kind !== 'FC' && n.leaf;
+  const kind = it.kind === 'FC' ? 'FC' : n.kind;
+  const name = it.kind === 'FC' ? it.fc : n.name;
+  const hasKids = !isLeaf && (it.kind === 'FC' || n.children.length > 0 || n.kind === 'LN' && n.fcs.size);
+  const open = $('#treeSearch').value.trim() ? true : S.expanded.has(key(it));
+  let meta = '';
+  if (n.kind === 'LN' && it.kind !== 'FC') meta = n.typeId || '';
+  else if ((n.kind === 'DO' || n.kind === 'SDO') && it.kind !== 'FC') meta = (n.cdc ? n.cdc + ' · ' : '') + (n.typeId || '');
+  else if (n.kind === 'DA' || n.kind === 'BDA') meta = (n.bType || '') + (n.typeId ? ' · ' + n.typeId : '') + (n.count ? ' [' + n.count + ']' : '');
+  else if (n.kind === 'LD') meta = 'inst=' + n.inst;
+  if (n.err && it.kind !== 'FC') meta = '⚠ ' + n.err;
+  let cnt = '';
+  if (it.kind === 'FC' || !isLeaf) {
+    const c = rangeCounts(it);
+    cnt = S.R ? `<span class="c-keep">✔${c[1]}</span> <span class="c-dep">▲${c[2]}</span> <span class="c-rem">/ ${c[0]}</span>` : esc(t('tr.tags', {n: c[0]}));
+  } else if (S.R) {
+    const s = S.R.st[n.li]; cnt = s === 1 ? `<span class="c-keep">${t('st.excel')}</span>` : s === 2 ? `<span class="c-dep">${t('st.dep')}</span>` : `<span class="c-rem">${t('st.rem')}</span>`;
+  }
+  const sel = S.sel && key(S.sel) === key(it) ? ' sel' : '';
+  return `<div class="vrow ${statusClass(it)}${isLeaf ? ' leaf' : ''}${sel}" style="top:${top}px;padding-left:${4 + it.depth * 16}px" data-i="${i}">` +
+    `<span class="caret" data-c="1">${hasKids ? (open ? '▾' : '▸') : ''}</span><span class="kind k-${kind}">${kind}</span><span class="nm">${esc(name)}</span>` +
+    `<span class="meta">${esc(meta)}</span><span class="cnts">${cnt}</span></div>`;
+}
+let treeVL = null;
+function renderTree(keepScroll){
+  if (!S.M) { $('#treeView').innerHTML = `<div class="empty">${esc(t('tree.empty'))}</div>`; treeVL = null; return; }
+  if (!treeVL) treeVL = new VList($('#treeView'), 22, renderTreeRow);
+  buildTreeRows(); treeVL.setCount(S.treeRows.length, keepScroll);
+}
+$('#treeView').addEventListener('click', ev => {
+  const row = ev.target.closest('.vrow'); if (!row || !S.treeRows.length) return;
+  const it = S.treeRows[+row.dataset.i]; if (!it) return;
+  if (ev.target.dataset.c) { const k = key(it); if (S.expanded.has(k)) S.expanded.delete(k); else S.expanded.add(k); renderTree(true); return; }
+  S.sel = it; treeVL.draw(); showDetails(it);
+});
+$('#treeView').addEventListener('dblclick', ev => {
+  const row = ev.target.closest('.vrow'); if (!row) return; const it = S.treeRows[+row.dataset.i]; if (!it) return;
+  const k = key(it); if (S.expanded.has(k)) S.expanded.delete(k); else S.expanded.add(k); renderTree(true);
+});
+let searchTimer = null;
+$('#treeSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => renderTree(), 250); });
+$('#treeFilter').addEventListener('change', () => renderTree());
+$('#btnExpLN').addEventListener('click', () => { if (!S.M) return; for (const ied of S.M.ieds) { S.expanded.add(key({node: ied})); for (const ld of ied.children) S.expanded.add(key({node: ld})); } renderTree(); });
+$('#btnCollapse').addEventListener('click', () => { S.expanded = new Set(); renderTree(); });
+
+function showDetails(it){
+  const n = it.node, el = $('#details'); const R = S.R; const sp = t('sep');
+  if (it.kind === 'FC') { const c = rangeCounts(it); el.innerHTML = t('d.fc', {fc: esc(it.fc), ln: esc(SCL.dotPath(n)), t: c[0], k: c[1], d: c[2], r: c[3]}); return; }
+  const lines = [];
+  lines.push(`<b>${esc(n.kind)}</b> <code>${esc(n.name)}</code>` + (n.typeId ? ` · ${t('d.type')} <code>${esc(n.typeId)}</code>` : '') + (n.bType ? ` · bType <code>${esc(n.bType)}</code>` : '') + (n.fc ? ` · FC <code>${esc(n.fc)}</code>` : '') + (n.cdc ? ` · CDC <code>${esc(n.cdc)}</code>` : ''));
+  if (n.kind !== 'IED') lines.push(`${t('d.path')}${sp}<code>${esc(SCL.dotPath(n))}</code>　MMS${sp}<code>${esc(SCL.mmsPath(n))}</code>`);
+  if (n.err) lines.push(`<span class="c-err">${t('d.err')}${sp}${esc(n.err)}</span>`);
+  if (n.leaf && R) {
+    const s = R.st[n.li];
+    lines.push(t('d.status') + sp + (s === 1 ? `<b class="c-keep">${t('d.stExcel')}</b>` : s === 2 ? `<b class="c-dep">${t('d.stDep')}</b>` : `<b class="c-rem">${t('d.stRem')}</b>`));
+    const src = R.src.get(n.li); if (src) lines.push(t('d.src') + sp + src.join(', '));
+    const rs = R.reasons.get(n.li); if (rs && s === 2) lines.push(t('d.reasons') + sp + '<br>' + [...rs].map(r => '• ' + esc(fmtReason(r))).join('<br>'));
+  } else if (R) {
+    const c = rangeCounts(it); lines.push(t('d.counts', {t: c[0], k: c[1], d: c[2], r: c[3]}));
+    if (n.kind === 'LN') lines.push(t('d.lnOut') + sp + (R.lnKeep.has(n) ? t('d.keep') : t('d.lnRem')));
+    if (n.kind === 'LD') lines.push(t('d.ldOut') + sp + (R.ldKeep.has(n) ? t('d.keep') : t('d.ldRem')));
+  }
+  el.innerHTML = lines.join('<br>');
+}
+
+/* ---- Excel 比對表 ---- */
+let matchVL = null;
+function renderMatch(){
+  if (!matchVL) matchVL = new VList($('#matchView'), 24, (i, top) => {
+    const e = S.matchRows[i];
+    return `<div class="vrow" style="top:${top}px" title="${esc(e.msg)}"><div style="width:60px">${e.row}</div><div style="width:300px">${esc(e.norm)}</div>` +
+      `<div style="width:90px"><span class="badge b-${e.status}">${esc(t('ms.' + e.status))}</span></div><div style="width:70px">${e.status === 'matched' || e.status === 'ambiguous' ? e.leafCount : ''}</div><div style="flex:1">${esc(e.msg)}</div></div>`;
+  });
+  const f = $('#matchFilter').value, q = $('#matchSearch').value.trim().toLowerCase();
+  S.matchRows = S.entries.filter(e => e.status && (f === 'all' || e.status === f || (f === 'unmatched' && e.status === 'invalid')) && (!q || (e.norm + ' ' + e.msg).toLowerCase().includes(q)));
+  matchVL.setCount(S.matchRows.length);
+  const bad = S.entries.filter(e => e.status === 'unmatched' || e.status === 'invalid' || e.status === 'ambiguous').length;
+  $('#cntMatch').textContent = S.entries.length; $('#cntMatch').className = 'cnt' + (bad ? ' e' : '');
+}
+$('#matchFilter').addEventListener('change', renderMatch);
+$('#matchSearch').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(renderMatch, 200); });
+
+/* ---- 相依保留清單 ---- */
+let depVL = null;
+function renderDeps(){
+  if (!depVL) depVL = new VList($('#depView'), 22, (i, top) => {
+    const li = S.depRows[i]; const lf = S.M.leaves[li]; const rs = S.R.reasons.get(li);
+    const txt = rs ? [...rs].map(fmtReason).join(' | ') : '';
+    return `<div class="vrow" style="top:${top}px"><div style="width:420px" class="c-dep">${esc(SCL.dotPath(lf))}</div><div style="flex:1" title="${esc(txt)}">${esc(txt)}</div></div>`;
+  });
+  S.depRows = [];
+  if (S.R) for (let i = 0; i < S.R.st.length; i++) if (S.R.st[i] === 2) S.depRows.push(i);
+  depVL.setCount(S.depRows.length);
+  $('#cntDep').textContent = S.depRows.length;
+  const sum = $('#depSummary');
+  if (!S.R) { sum.innerHTML = ''; return; }
+  const rows = [...S.R.depCat.entries()].sort((a, b) => b[1] - a[1]);
+  sum.innerHTML = rows.length ? '<table class="stats" style="max-width:640px">' + rows.map(([k, v]) => `<tr><td>${esc(k)}</td><td class="v">${fmt(v)}</td></tr>`).join('') + '</table>' : `<span class="hint">${esc(t('dep.none'))}</span>`;
+}
+
+/* ---- 驗證 ---- */
+let valVL = null;
+function renderVal(){
+  if (!valVL) valVL = new VList($('#valView'), 24, (i, top) => {
+    const x = S.valRows[i];
+    return `<div class="vrow" style="top:${top}px" title="${esc(x.msg)}"><div style="width:80px"><span class="badge b-${x.level}">${x.level}</span></div><div style="width:90px"><span class="badge b-${x.src}">${esc(t(x.src === 'new' ? 'src.new' : 'src.pre'))}</span></div><div style="width:120px">${esc(x.code)}</div><div style="flex:1">${esc(x.msg)}</div></div>`;
+  });
+  S.valRows = S.R ? S.R.issues.slice().sort((a, b) => (a.src === 'new' ? 0 : 1) - (b.src === 'new' ? 0 : 1) || (a.level === 'error' ? 0 : 1) - (b.level === 'error' ? 0 : 1)) : (S.M ? S.M.issues.map(x => Object.assign({src: 'pre'}, x)) : []);
+  valVL.setCount(S.valRows.length);
+  $('#cntVal').textContent = S.valRows.length;
+  $('#cntVal').className = 'cnt' + (S.R && S.R.blocking.length ? ' e' : '');
+}
+
+/* ---- 統計 ---- */
+function renderStats(){
+  const tb = $('#statsTbl');
+  if (!S.M) { tb.innerHTML = `<tr><td class="hint">${esc(t('stats.empty'))}</td></tr>`; return; }
+  const E = S.entries; const cnt = s => E.filter(e => e.status === s).length;
+  const R = S.R, st = R ? R.stats : null;
+  const row = (k, v, cls) => `<tr><td>${esc(t(k))}</td><td class="v ${cls || ''}">${v}</td></tr>`;
+  const sec = k => `<tr class="sec"><td colspan="2">${esc(t(k))}</td></tr>`;
+  let h = sec('s.sec1') + row('s.total', fmt(S.M.leaves.length));
+  if (S.rows) {
+    const bad = cnt('unmatched') + cnt('invalid');
+    h += row('s.xlRows', fmt(E.length)) + row('s.xlUniq', fmt(E.length - cnt('duplicate'))) + row('s.dup', fmt(cnt('duplicate')))
+      + row('s.matched', fmt(cnt('matched')), 'c-keep') + row('s.unmatched', fmt(bad), bad ? 'c-err' : '')
+      + row('s.amb', fmt(cnt('ambiguous')), cnt('ambiguous') ? 'c-dep' : '');
+  }
+  if (st) {
+    h += sec('s.sec2') + row('s.excel', fmt(st.excel), 'c-keep') + row('s.dep', fmt(st.dep), 'c-dep') + row('s.kept', fmt(st.kept))
+      + row('s.removed', fmt(st.removed), 'c-rem') + row('s.out', fmt(st.outLeaves)) + row('s.ratio', st.total ? (100 * st.removed / st.total).toFixed(1) + ' %' : '-');
+    h += sec('s.sec3') + row('s.ld', `${st.ldBefore} → ${st.ldAfter}`) + row('s.ln', `${st.lnBefore} → ${st.lnAfter}`)
+      + row('s.ds', `${st.dsBefore} → ${st.dsAfter}`) + row('s.rcb', `${st.rcbBefore} → ${st.rcbAfter}`) + row('s.sgcb', `${st.sgcbBefore} → ${st.sgcbAfter}`)
+      + row('s.inst', fmt(st.instRemoved)) + row('s.types', `${st.typesModified} / ${st.typesCloned}`)
+      + row('s.typesRem', `${st.typesRemoved.ln}/${st.typesRemoved.do}/${st.typesRemoved.da}/${st.typesRemoved.en}`)
+      + row('s.size', (st.outBytes / 1024).toFixed(1) + ' KB');
+    const ne = R.issues.filter(x => x.src === 'new' && x.level === 'error').length, nw = R.issues.filter(x => x.src === 'new' && x.level !== 'error').length;
+    const pe = R.issues.filter(x => x.src === 'pre' && x.level === 'error').length, pw = R.issues.filter(x => x.src === 'pre' && x.level !== 'error').length;
+    h += sec('s.sec4') + row('s.new', `${ne} / ${nw}`, ne ? 'c-err' : '') + row('s.pre', `${pe} / ${pw}`) + row('s.ms', st.ms + ' ms');
+  }
+  tb.innerHTML = h;
+}
+function renderExport(){
+  const R = S.R; const msg = $('#dlMsg');
+  $('#btnCsvMatch').disabled = !(S.M && S.rows);
+  $('#btnCsvTags').disabled = !S.M; $('#btnCsvVal').disabled = !S.M;
+  if (!R) { $('#btnDl').disabled = true; msg.innerHTML = ''; return; }
+  if (R.blocking.length) { $('#btnDl').disabled = true; msg.innerHTML = `<span class="c-err">${esc(t('dl.block', {n: R.blocking.length}))}<br>${esc(R.blocking[0].msg)}</span>`; return; }
+  if (R.stats.kept === 0) { $('#btnDl').disabled = true; msg.innerHTML = `<span class="c-err">${esc(t('dl.none'))}</span>`; return; }
+  $('#btnDl').disabled = false;
+  msg.innerHTML = `<span class="c-keep">${esc(t('dl.ok', {n: fmt(R.stats.outLeaves)}))}</span>`;
+}
+function renderAll(){ renderStats(); renderExport(); renderRcb(); renderTree(true); renderMatch(); renderDeps(); renderVal(); if (S.sel) showDetails(S.sel); else $('#details').innerHTML = `<span class="hint">${esc(t('details.hint'))}</span>`; }
+
+/* ---- 匯出 ---- */
+const baseName = () => S.icdName.replace(/\.[^.]+$/, '');
+$('#btnDl').addEventListener('click', () => {
+  if (!S.R || S.R.blocking.length) return;
+  download(baseName() + '_filtered.icd', new Blob([S.R.xmlText], {type: 'application/xml'}));
+});
+$('#btnCsvMatch').addEventListener('click', () => {
+  const rows = [t('csv.match').split('|')];
+  for (const e of S.entries) rows.push([e.row, e.raw, e.norm, t('ms.' + (e.status || 'unmatched')), e.leafCount || '', e.status === 'matched' && e.results[0] ? SCL.mmsPath(e.results[0].node) + ' | ' + e.msg : e.msg]);
+  download(baseName() + '_match_report.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+$('#btnCsvTags').addEventListener('click', () => {
+  const rows = [t('csv.tags').split('|')];
+  const R = S.R;
+  for (const lf of S.M.leaves) {
+    const p = SCL.pathInfo(lf); const s = R ? R.st[lf.li] : -1;
+    rows.push([p.ied.name, p.ld.ldName, p.ln.name, lf.fc, p.doPath.join('.'), p.daPath.join('.'), SCL.mmsPath(lf), lf.bType,
+      s === 1 ? 'KEEP (Excel)' : s === 2 ? 'KEEP (Dependency)' : s === 0 ? 'REMOVE' : '-', R && R.src.get(lf.li) ? R.src.get(lf.li).join(' ') : '',
+      (lf.err ? 'ERROR: ' + lf.err + ' ' : '') + (R && R.reasons.get(lf.li) && s === 2 ? [...R.reasons.get(lf.li)].map(fmtReason).join(' | ') : '')]);
+  }
+  download(baseName() + '_tag_status.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+$('#btnCsvVal').addEventListener('click', () => {
+  const rows = [t('csv.val').split('|')];
+  for (const x of S.valRows) rows.push([x.level, t(x.src === 'new' ? 'src.new' : 'src.pre'), x.code, x.msg]);
+  rows.push([]); rows.push([t('csv.scope'), '', '', t('csv.scopeD')]);
+  download(baseName() + '_validation.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+/* ---- 分頁 ---- */
+$('#tabs').addEventListener('click', ev => {
+  const b = ev.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + b.dataset.tab));
+  [treeVL, matchVL, depVL, valVL].forEach(v => v && v.draw());
+});
+
+/* ---- 說明（中 / 英） ---- */
+const HELP_ZH = `
+<h2>使用流程</h2>
+<ol>
+<li>載入原始 ICD（只讀取，原始檔案不會被修改；所有處理皆在記憶體中的副本進行）。</li>
+<li>載入 Excel I/O List，選擇 Worksheet、Tag 欄位與資料起始列（工具會自動猜測，請確認）。</li>
+<li>檢查「Excel 比對結果」：處理所有 <b>找不到</b> 與 <b>有歧義</b> 的項目。</li>
+<li>在「ReportControl」選項決定要保留哪些 Report，並檢查「相依保留」了解哪些非白名單 Tag 因何保留。</li>
+<li>確認「驗證與警告」沒有篩選新增的錯誤後，Download Filtered ICD，並在 Elipse 中進行 Phase 3 測試。</li>
+</ol>
+
+<h2>Excel 路徑解析規則</h2>
+<ul>
+<li>以 <code>.</code> 為主要分隔符號；亦接受 <code>/</code>（LDevice 分隔）與 <code>$</code>（MMS 形式）。分隔符號只用來切出名稱，每一段都必須依 ICD 資料模型逐層解析，<b>不是</b>單純字串替換。</li>
+<li>不假設固定層數。例如：<code>MMXU1.TotW.mag.f</code>、<code>LD0/MMXU1.TotW.mag.f</code>、<code>IED1LD0/MMXU1$MX$TotW$mag$f</code>、<code>XCBR1.Pos.stVal[ST]</code>、<code>XCBR1.ST.Pos</code>。</li>
+<li>前綴可為：無、LDevice inst、LDevice 完整名稱（ldName 或 IED 名稱+inst）、IED 名稱、IED 名稱 + inst。</li>
+<li>FC 可省略：DA 的 FC 由 DOType 定義取得。FC 可出現在 LN 之後（MMS 形式）、路徑中任一層一次、或以 <code>[FC]</code> 結尾。指定 FC 與型別定義不符則視為不匹配。</li>
+<li>路徑可指到非末端節點（LN、DO、結構 DA），此時保留其下所有 Tag（若有 FC 則僅限該 FC）。</li>
+<li>大小寫敏感；空白（含全形空白、NBSP、零寬字元）會被移除；重複項目只計一次。</li>
+<li>大小寫不同等「近似」結果只顯示為提示，<b>不會</b>用於決定保留或刪除。</li>
+<li>同一路徑在多個 LDevice/IED 中都能解析時視為 <b>歧義</b>：預設保留所有候選並標黃色，或可設定為不保留。</li>
+</ul>
+
+<h2>篩選演算法（Whitelist-based Subtractive Filtering / Mark-and-Sweep）</h2>
+<ol>
+<li><b>解析</b>：IED → AccessPoint → Server → LDevice → LN0/LN，並依 lnType → LNodeType → DO → DOType → SDO/DA(fc) → DAType → BDA 實例化，Tag = 末端 DA/BDA。</li>
+<li><b>Mark</b>：Excel 匹配項目標綠色；再依序加入相依保留（黃色）：控制完整性、q/t（選用）、保留中 Report/GOOSE 的 DataSet 成員、刪減粒度、SCL 結構最小需求。</li>
+<li><b>型別計畫</b>：完全保留 → 沿用原型別；同一型別只有一種精簡版本 → 就地精簡並沿用原 id（可關閉）；共用型別有多種不同需求 → 複製為 <code>原id_F1</code>、<code>_F2</code>…，不影響其他使用者。</li>
+<li><b>Sweep</b>：移除未保留的 LDevice、LN、ReportControl、DataSet、無效的 DOI/SDI/DAI、失效的 Substation LNode 參照，以及（選用）未被參照的型別。</li>
+<li><b>驗證</b>：重新解析輸出並執行結構/參照檢查，與原始 ICD 的既有問題比較；並回讀比對「輸出 ICD 的 Tag 集合」是否等於「預計保留集合」。篩選新增的錯誤會禁止下載。</li>
+</ol>
+
+<h2>ReportControl 選項</h2>
+<table>
+<tr><th>選項</th><th>行為</th></tr>
+<tr><td>保留含白名單資料的 Report（預設）</td><td>Report 的 DataSet 只要含任一白名單資料就保留，其 DataSet 成員全部相依保留（黃色）。</td></tr>
+<tr><td>保留全部 Report 與 DataSet</td><td>不刪除任何 Report/DataSet；成員全部相依保留。</td></tr>
+<tr><td>移除全部 Report</td><td>移除所有 ReportControl 與只被它們使用的 DataSet；DataSet 成員不再相依保留。Elipse 只能以 polling 讀取。</td></tr>
+<tr><td>自訂</td><td>在清單中勾選要保留的 Report。第一次切換時預設勾選「含白名單」的 Report。</td></tr>
+</table>
+<p>被 GOOSE（GSEControl）、SV、LogControl 使用的 DataSet 一律保留。保留的 DataSet 一律<b>不刪減</b>成員。</p>
+<p><b>移除 Report 的風險</b>：只靠 polling 時，兩次讀取之間的短暫變化（例如保護動作脈衝）可能漏失、狀態更新延遲、失去 IED 端事件時間戳；BRCB 在斷線期間的事件緩衝也會失去；polling 也可能增加 IED 與網路負載。建議事件類資料（保護、開關位置）保留 Report，量測類可改 polling。</p>
+
+<h2>其他設計決策</h2>
+<table>
+<tr><th>項目</th><th>處理方式</th><th>理由</th></tr>
+<tr><td>保留的 DataSet</td><td>不刪減任何 FCDA，成員全部相依保留。</td><td>Report 依 DataSet 成員順序傳送；若 ICD 中的 DataSet 或型別結構與 IED 不同，Client 依 ICD 解碼時可能錯位。</td></tr>
+<tr><td>刪減粒度</td><td>預設 DA：保留 <code>mag.f</code> 時整個 <code>mag</code> 保留。</td><td>若 Driver 以 DA/DO 為單位讀取並依 ICD 型別解碼，精簡後的結構可能不一致。確認 Elipse 只讀末端路徑後，可改 Leaf。</td></tr>
+<tr><td>控制完整性</td><td>保留任一 CO 屬性時，保留該 DO 的所有 CO 結構及 ctlModel、sboTimeout 等。</td><td>IEC 61850 控制服務需寫入完整 Oper/SBOw 結構；ctlModel 供 Client 判斷 direct / SBO。</td></tr>
+<tr><td>LN0</td><td>保留的 LDevice 必定保留 LN0；若無白名單資料，保留最小內容（Mod.stVal）。</td><td>SCL Schema 要求 LDevice 有 LN0，LNodeType 至少一個 DO。</td></tr>
+<tr><td>GOOSE / SV</td><td>不自動刪除。</td><td>可能被其他 IED 訂閱，且與 Communication 區段互相參照。</td></tr>
+<tr><td>SettingControl</td><td>預設保留；勾選「移除 SettingControl」才刪除。</td><td>Elipse 依 SettingControl 在 LLN0 建立 SP 節點。移除後無法從 Elipse 切換/讀取定值群組，IED 本身不受影響。</td></tr>
+</table>
+
+<h2>驗證層級（請勿混淆）</h2>
+<table>
+<tr><th>層級</th><th>本工具</th></tr>
+<tr><td>1. XML 格式有效</td><td>✔ 檢查</td></tr>
+<tr><td>2. SCL 結構與參照有效</td><td>◐ 部分：本工具實作的檢查（型別參照、LN0、名稱唯一、DOI/DAI、FCDA、datSet、GSE/SMV、LNode）。<b>未</b>執行完整 IEC 61850-6 XSD Schema 驗證。</td></tr>
+<tr><td>3. Elipse DLL 可匯入</td><td>✖ 需在 Elipse 中實測（Phase 3）</td></tr>
+<tr><td>4. 實際 IED 通訊正常</td><td>✖ 需現場/實機測試（Phase 3）</td></tr>
+</table>
+
+<h2>已知限制</h2>
+<ul>
+<li><b>Tag 數只計資料型別展開的末端 DA/BDA。</b>Elipse 另外會依控制區塊建立節點（ReportControl → RP/BR、SettingControl → SP、GSEControl → GO、LogControl → LG），這些不在樹狀圖與 Tag 數中。</li>
+<li>陣列（count）視為單一 Tag；Elipse 可能依元素展開。</li>
+<li>精簡後的 ICD 不再與 IED 實際模型完全一致，只供 Elipse 使用，不可用於系統整合（SCD）。</li>
+<li>不修改 Communication 區段；不處理 ed2.1 的擴充語意（例如 count 參照其他屬性）。</li>
+<li>.xls 僅支援 Excel 97–2003（BIFF8）且未加密；Excel 公式只讀取快取結果值。</li>
+</ul>
+
+<h2>SCL 函式庫評估</h2>
+<p>OpenEnergyTools <code>scl-lib</code> / OpenSCD 模組以 TypeScript ES Module 發佈，主要提供 SCL 編輯操作，未提供「依型別實例化為 Tag 清單並依白名單反向精簡/複製型別」功能，且需要 Node.js 建置。因此本工具以 DOMParser 作為 XML 讀取層，自行實作 IEC 61850-6 資料模型與相依處理，並以回讀比對確認輸出。</p>
+
+<h2>Phase 3 Elipse 驗收清單</h2>
+<ol>
+<li>原始 ICD 與精簡 ICD 分別匯入 Elipse，記錄 Driver Tag 數，與「輸出 ICD 回讀 Tag 數」比較並解釋差異（含 RP/BR/SP 節點）。</li>
+<li>比對 Elipse Tag 清單與「Tag 狀態清單 CSV」中 KEEP 的項目。</li>
+<li>確認讀取（polling）、控制（direct/SBO）、Report（buffered/unbuffered）通訊正常；移除 Report 時特別確認事件是否漏失。</li>
+<li>確認授權計數的 Tag 數符合預期。</li>
+</ol>`;
+
+const HELP_EN = `
+<h2>Workflow</h2>
+<ol>
+<li>Load the original ICD (read only; the original file is never modified; all processing works on an in-memory copy).</li>
+<li>Load the Excel I/O list and select the worksheet, tag column and first data row (the tool guesses them; please confirm).</li>
+<li>Review "Excel match results" and resolve every <b>Not found</b> and <b>Ambiguous</b> entry.</li>
+<li>Choose which Reports to keep with the "ReportControl" option, and review "Dependencies" to see why non-whitelisted tags are kept.</li>
+<li>Make sure "Validation & warnings" shows no new errors, download the filtered ICD, then run the Phase 3 tests in Elipse.</li>
+</ol>
+
+<h2>Excel path resolution rules</h2>
+<ul>
+<li><code>.</code> is the main separator; <code>/</code> (LDevice) and <code>$</code> (MMS style) are also accepted. Separators only split names; every segment is resolved level by level against the ICD data model — this is <b>not</b> a plain string replacement.</li>
+<li>No fixed depth is assumed. Examples: <code>MMXU1.TotW.mag.f</code>, <code>LD0/MMXU1.TotW.mag.f</code>, <code>IED1LD0/MMXU1$MX$TotW$mag$f</code>, <code>XCBR1.Pos.stVal[ST]</code>, <code>XCBR1.ST.Pos</code>.</li>
+<li>Allowed prefixes: none, LDevice inst, full LDevice name (ldName or IED name + inst), IED name, IED name + inst.</li>
+<li>The FC is optional: a DA's FC comes from its DOType. The FC may follow the LN (MMS style), appear once at any level, or be given as a trailing <code>[FC]</code>. A FC that contradicts the type definition is a mismatch.</li>
+<li>A path may point to a non-leaf node (LN, DO, struct DA); all tags below it are kept (restricted to the FC if one is given).</li>
+<li>Case-sensitive; whitespace (incl. full-width spaces, NBSP, zero-width characters) is removed; duplicates count once.</li>
+<li>Near matches such as different letter case are shown as hints only and <b>never</b> decide what is kept or removed.</li>
+<li>A path that resolves in several LDevices/IEDs is <b>ambiguous</b>: by default all candidates are kept and marked yellow; this can be changed to keep none.</li>
+</ul>
+
+<h2>Filtering algorithm (whitelist-based subtractive filtering / mark-and-sweep)</h2>
+<ol>
+<li><b>Parse</b>: IED → AccessPoint → Server → LDevice → LN0/LN, instantiated via lnType → LNodeType → DO → DOType → SDO/DA(fc) → DAType → BDA. A tag = a leaf DA/BDA.</li>
+<li><b>Mark</b>: Excel matches are green; dependencies (yellow) are then added: control completeness, q/t (optional), DataSet members of kept Reports/GOOSE, granularity, SCL structural minimum.</li>
+<li><b>Type plan</b>: fully kept → original type; only one reduced variant → reduced in place keeping the original id (can be disabled); a shared type needed in different ways → cloned as <code>id_F1</code>, <code>_F2</code>… without affecting other users.</li>
+<li><b>Sweep</b>: removes LDevices, LNs, ReportControls and DataSets that are not kept, invalid DOI/SDI/DAI, broken Substation LNode references and (optionally) unreferenced types.</li>
+<li><b>Validate</b>: re-parses the output, runs the structure/reference checks and compares them with issues already present in the original ICD; then checks that the tag set read back from the output equals the planned set. New errors block the download.</li>
+</ol>
+
+<h2>ReportControl option</h2>
+<table>
+<tr><th>Option</th><th>Behaviour</th></tr>
+<tr><td>Keep Reports containing whitelisted data (default)</td><td>A Report is kept if its DataSet contains any whitelisted data; all members of that DataSet are kept as dependencies (yellow).</td></tr>
+<tr><td>Keep all Reports and DataSets</td><td>No Report/DataSet is removed; all members are kept as dependencies.</td></tr>
+<tr><td>Remove all Reports</td><td>Removes every ReportControl and the DataSets used only by them; their members are no longer kept as dependencies. Elipse can only poll.</td></tr>
+<tr><td>Custom</td><td>Tick the Reports to keep in the list. On first switch, Reports containing whitelisted data are pre-ticked.</td></tr>
+</table>
+<p>DataSets used by GOOSE (GSEControl), SV or LogControl are always kept. Members of a kept DataSet are <b>never</b> trimmed.</p>
+<p><b>Risks of removing Reports</b>: with polling only, short changes between two reads (e.g. protection trip pulses) can be missed, status updates are delayed and IED-side event timestamps are lost; BRCB buffering during disconnection is lost; polling may also increase IED and network load. Keeping Reports for event data (protection, switch positions) and polling measurements is a common compromise.</p>
+
+<h2>Other design decisions</h2>
+<table>
+<tr><th>Item</th><th>Handling</th><th>Reason</th></tr>
+<tr><td>Kept DataSets</td><td>No FCDA is removed; all members are kept as dependencies.</td><td>Reports are sent in DataSet member order; if the DataSet or type structure in the ICD differs from the IED, a client decoding by the ICD may misalign values.</td></tr>
+<tr><td>Granularity</td><td>Default DA: keeping <code>mag.f</code> keeps the whole <code>mag</code>.</td><td>If the driver reads whole DAs/DOs and decodes them by the ICD types, reduced structures may not match. Switch to Leaf once Elipse is confirmed to read leaf paths only.</td></tr>
+<tr><td>Control completeness</td><td>When any CO attribute is kept, all CO structures of that DO plus ctlModel, sboTimeout etc. are kept.</td><td>IEC 61850 control services write the complete Oper/SBOw structure; ctlModel tells the client whether to use direct or SBO.</td></tr>
+<tr><td>LN0</td><td>A kept LDevice always keeps LN0; with no whitelisted data, a minimum (Mod.stVal) is kept.</td><td>The SCL schema requires LN0 in an LDevice and at least one DO in an LNodeType.</td></tr>
+<tr><td>GOOSE / SV</td><td>Never removed automatically.</td><td>They may be subscribed by other IEDs and are referenced by the Communication section.</td></tr>
+<tr><td>SettingControl</td><td>Kept by default; removed only when "Remove SettingControl" is ticked.</td><td>Elipse creates the SP node in LLN0 from SettingControl. After removal, setting groups cannot be switched/read from Elipse; the IED itself is unaffected.</td></tr>
+</table>
+
+<h2>Validation levels (do not confuse them)</h2>
+<table>
+<tr><th>Level</th><th>This tool</th></tr>
+<tr><td>1. Well-formed XML</td><td>✔ checked</td></tr>
+<tr><td>2. Valid SCL structure and references</td><td>◐ partially: checks implemented by this tool (type references, LN0, unique names, DOI/DAI, FCDA, datSet, GSE/SMV, LNode). Full IEC 61850-6 XSD schema validation is <b>not</b> performed.</td></tr>
+<tr><td>3. Importable by the Elipse DLL</td><td>✖ must be tested in Elipse (Phase 3)</td></tr>
+<tr><td>4. Working IED communication</td><td>✖ must be tested on site / with the real device (Phase 3)</td></tr>
+</table>
+
+<h2>Known limitations</h2>
+<ul>
+<li><b>Tag counts only include leaf DA/BDA expanded from data types.</b> Elipse also creates nodes from control blocks (ReportControl → RP/BR, SettingControl → SP, GSEControl → GO, LogControl → LG); these are not in the tree or the tag count.</li>
+<li>Arrays (count) are counted as one tag; Elipse may expand them per element.</li>
+<li>The filtered ICD no longer matches the real IED model exactly; use it for Elipse only, never for system integration (SCD).</li>
+<li>The Communication section is not modified; Edition 2.1 extensions (e.g. count referencing another attribute) are not interpreted.</li>
+<li>.xls supports unencrypted Excel 97–2003 (BIFF8) only; Excel formulas use their cached result values.</li>
+</ul>
+
+<h2>SCL library evaluation</h2>
+<p>OpenEnergyTools <code>scl-lib</code> / OpenSCD modules are TypeScript ES modules focused on SCL editing operations; they do not instantiate types into a tag list or reduce/clone types from a whitelist, and they need a Node.js build. This tool therefore uses DOMParser as the XML layer and implements the IEC 61850-6 data model and dependency handling itself, confirming the output with a read-back comparison.</p>
+
+<h2>Phase 3 Elipse acceptance checklist</h2>
+<ol>
+<li>Import the original and the filtered ICD into Elipse, record the driver tag counts and explain differences from "Tags read back from output ICD" (including RP/BR/SP nodes).</li>
+<li>Compare the Elipse tag list with the KEEP rows of the tag status CSV.</li>
+<li>Verify polling reads, controls (direct/SBO) and Reports (buffered/unbuffered); when Reports are removed, check specifically for missed events.</li>
+<li>Verify that the licence-counted tag count is as expected.</li>
+</ol>`;
+
+/* ---- 測試掛勾（供自動化測試使用，不影響一般操作） ---- */
+window.ICDFilter = {SCL, Matcher, Engine, Validator, Excel, state: S, loadIcdText, loadExcelBuffer, setLang, t,
+  setExcel(opts){ if (opts.sheet != null) $('#selSheet').value = opts.sheet; if (opts.col != null) $('#selCol').value = opts.col; if (opts.start != null) $('#inStart').value = opts.start; if (opts.prefix != null) $('#inPrefix').value = opts.prefix; rematch(); runAnalysis(); }};
+
+/* ---- 初始化 ---- */
+let initLang = 'zh';
+try { initLang = localStorage.getItem('icdfilter.lang') || (/^zh/i.test(navigator.language) ? 'zh' : 'en'); } catch (e) {}
+LANG = initLang === 'en' ? 'en' : 'zh';
+$('#selLang').value = LANG;
+setStatus('#icdStatus', () => t('notLoaded'));
+setStatus('#xlStatus', () => t('notLoaded'));
+applyStatic();
+renderAll();
+})();
+</script>
+</body>
+</html>
