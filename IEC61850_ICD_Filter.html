@@ -173,6 +173,31 @@ table.stats tr.sec td{font-weight:600;color:var(--mut);padding-top:7px;border-bo
   </fieldset>
 
   <fieldset>
+    <legend data-i18n="f.elipse"></legend>
+    <div class="hint" data-i18n="el.hint"></div>
+        <div class="frow"><span class="lb" data-i18n="el.drv"></span><input type="text" id="inElDrv" value="IEC61850"></div>
+    <div class="frow"><span class="lb" data-i18n="el.prj"></span><input type="text" id="inElPrj" placeholder="C:\...\project.prj"></div>
+    <div class="hint" data-i18n="el.prjHint"></div>
+    <div class="frow"><span class="lb" data-i18n="el.mode"></span>
+      <select id="selElMode">
+        <option value="excel" selected data-i18n="el.modeExcel"></option>
+        <option value="filtered" data-i18n="el.modeFiltered"></option>
+      </select></div>
+    <div class="frow"><span class="lb">DataSets</span>
+      <select id="selElDs">
+        <option value="none" selected data-i18n="el.dsNone"></option>
+        <option value="wl" data-i18n="el.dsWl"></option>
+        <option value="all" data-i18n="el.dsAll"></option>
+      </select></div>
+    <label class="chk"><input type="checkbox" id="optElQt"><span data-i18n="el.qt"></span></label>
+    <details style="margin:4px 0"><summary class="hint" data-i18n="el.tpl"></summary>
+    <input type="file" id="fElTpl" accept=".csv">
+    <div class="status" id="elTplStatus"></div></details>
+    <div class="btncol"><button id="btnElipse" class="primary" disabled data-i18n="btn.elipse"></button></div>
+    <div class="dlmsg" id="elMsg"></div>
+  </fieldset>
+
+  <fieldset>
     <legend data-i18n="f.export"></legend>
     <div class="btncol">
       <button id="btnDl" class="primary" disabled>Download Filtered ICD</button>
@@ -255,7 +280,7 @@ table.stats tr.sec td{font-weight:600;color:var(--mut);padding-top:7px;border-bo
  * I18N — 語系字典：key: [中文, English]；參數以 {name} 表示
  * ===================================================================== */
 const DICT = {
-  'app.sub': ['Whitelist-based Subtractive Filtering · 完全離線 · 不修改原始 ICD · v1.1', 'Whitelist-based Subtractive Filtering · Fully offline · Original ICD never modified · v1.1'],
+  'app.sub': ['Whitelist-based Subtractive Filtering · 完全離線 · 不修改原始 ICD · v1.2', 'Whitelist-based Subtractive Filtering · Fully offline · Original ICD never modified · v1.2'],
   'busy': ['處理中…', 'Processing…'],
   'notLoaded': ['尚未載入', 'Not loaded'],
   'f.icd': ['1. ICD 檔案', '1. ICD file'],
@@ -294,7 +319,7 @@ const DICT = {
   'btn.run': ['重新分析', 'Re-analyze'],
   'f.stats': ['4. 結果統計', '4. Results'],
   'stats.empty': ['載入 ICD 與 Excel 後顯示', 'Shown after loading ICD and Excel'],
-  'f.export': ['5. 匯出', '5. Export'],
+  'f.export': ['6. 其他匯出（篩選後 ICD／報告）', '6. Other exports (filtered ICD / reports)'],
   'btn.csvMatch': ['匯出 Excel 比對報告 (CSV)', 'Export Excel match report (CSV)'],
   'btn.csvTags': ['匯出 Tag 狀態清單 (CSV)', 'Export tag status list (CSV)'],
   'btn.csvVal': ['匯出驗證結果 (CSV)', 'Export validation results (CSV)'],
@@ -494,6 +519,30 @@ const DICT = {
   'xe.sst': ['SST 資料不完整', 'Incomplete SST data'],
   'xe.noBook': ['XLS 中找不到 Workbook 資料流', 'Workbook stream not found in the XLS'],
   'xe.biff': ['僅支援 Excel 97-2003 (BIFF8) 格式的 .xls，請另存為 .xlsx 後再匯入', 'Only Excel 97-2003 (BIFF8) .xls is supported; save as .xlsx and try again'],
+  'f.elipse': ['5. 匯出 Elipse Driver CSV', '5. Export Elipse driver CSV'],
+  'el.hint': ['由完整 ICD + Excel 清單直接產生 Elipse IEC61850 Driver 物件 CSV。Elipse 內的 Driver 仍使用原始完整 ICD，日後可再以瀏覽方式新增 Tag。', 'Generates the Elipse IEC61850 driver object CSV straight from the full ICD + Excel list. The Elipse driver keeps the original full ICD, so tags can still be added later by browsing.'],
+  'el.tpl': ['進階：Elipse 範本 CSV（一般不需要，僅 Elipse 升版時使用）', 'Advanced: Elipse template CSV (normally not needed; only after an Elipse upgrade)'],
+  'el.drv': ['Driver 名稱', 'Driver name'],
+  'el.prj': ['PRJ 路徑', 'PRJ path'],
+  'el.prjHint': ['在檔案總管對 .prj 檔按 Shift + 右鍵 →「複製為路徑」，貼上即可（引號會自動去除）；填一次後會記住。', 'In Explorer, Shift + right-click the .prj file → "Copy as path" and paste it here (quotes are removed automatically); remembered after the first time.'],
+  'el.mode': ['Tag 範圍', 'Tag scope'],
+  'el.modeExcel': ['僅 Excel 清單中的點（建議）', 'Only points in the Excel list (recommended)'],
+  'el.modeFiltered': ['與篩選後 ICD 相同（含相依保留）', 'Same as filtered ICD (incl. dependencies)'],
+  'el.dsNone': ['不產生', 'Do not generate'],
+  'el.dsWl': ['只含清單中的成員', 'Only members in the list'],
+  'el.dsAll': ['全部成員', 'All members'],
+  'el.qt': ['同時產生 ST/MX 的 q、t', 'Also generate q and t for ST/MX'],
+  'btn.elipse': ['匯出 Elipse CSV', 'Export Elipse CSV'],
+  'el.tplOk': ['✔ 範本：{d}（Driver {n}）', '✔ Template: {d} (driver {n})'],
+  'el.tplNone': ['未載入範本：使用內建格式（Driver IEC 61850 v3.0.59）', 'No template: using built-in format (Driver IEC 61850 v3.0.59)'],
+  'el.badTpl': ['不是 Elipse 匯出的 CSV（第一列需為 ObjectType,Name,…）', 'Not an Elipse export CSV (first row must be ObjectType,Name,…)'],
+  'el.noDrv': ['範本中找不到 IODriver 列', 'No IODriver row in the template'],
+  'el.noPrj': ['請填寫 PRJ 路徑（Elipse 專案 .prj 檔的完整路徑，填一次後會自動記住）', 'Fill in the PRJ path (full path of the Elipse .prj file; remembered after the first time)'],
+  'el.ok': ['✔ 已匯出：{tag} 個 Tag、{oper} 個 Operate、{block} 個控制狀態區塊、{folder} 個資料夾', '✔ Exported: {tag} tags, {oper} Operate, {block} command status blocks, {folder} folders'],
+  'el.wSbo': ['{n} 個控制點具 SBO 結構，目前只產生 Operate（請由 Elipse 匯出一個 SBO 點確認 Select 格式）：{ex}', '{n} controls have SBO structures; only Operate is generated (export one SBO point from Elipse to confirm the Select format): {ex}'],
+  'el.wNoOper': ['{n} 個 CO 資料物件沒有 Oper：{ex}', '{n} CO data objects have no Oper: {ex}'],
+  'el.wArr': ['{n} 個 Tag 為陣列屬性（count），Elipse 展開方式未經驗證', '{n} tags are array attributes (count); Elipse expansion not verified'],
+  'el.wUnm': ['Excel 有 {n} 列無法對應 ICD，未產生（見「Excel 比對」分頁）', '{n} Excel rows did not match the ICD and were skipped (see the match tab)'],
   'xe.unknown': ['無法辨識的 Excel 檔案格式（需為 .xlsx 或 .xls）', 'Unrecognized Excel format (.xlsx or .xls required)']
 };
 let LANG = 'zh';
@@ -1417,6 +1466,206 @@ const Engine = (() => {
 })();
 
 /* =====================================================================
+ * Elipse — 由完整 ICD 模型 + Excel 白名單直接產生 Elipse E3 IEC61850 Driver
+ *          物件匯入 CSV（格式依 Elipse 匯出檔 Example_F255A_Elipse.CSV 反推）
+ *          原始 ICD 不刪減 → Elipse 仍可用完整 ICD 瀏覽並於日後新增 Tag
+ * ===================================================================== */
+const Elipse = (() => {
+  const BUILTIN_PREFIX = ["ObjectType,Name,AdviseType,AlarmVerify,AllowRead,AllowWrite,AsyncBatchFlushTimeMs,AsyncBatchSize,B1,B2,B3,B4,DeviceHigh,DeviceLow,DisableIOServerPool,DocString,DriverLocation,DriverName,EnableDeadband,EnableDriverEvent,EnableReadGrouping,EnableScaling,EU,EUHigh,EULow,ExposeToOpc,Index,IsAlarmArea,N1,N2,N3,N4,P1,P2,P3,P4,ParamDevice,ParamItem,PathContainer,PathName,PathVolume,PercentDeadband,ReadRetries,Scan,ShareMaximum,ShareServer,Size,UseBitFields,WriteFeedbackMode,WriteNullAsEmpty,WriteRetries,WriteSyncMode", "IODriver,\"\",,,,,-1,-1,,,,,,,False,\"\",\"driver\\\\IEC61850\\\\IEC61850.dll\",\"Driver IEC 61850 v3.0.59 (IOKitLib v3.0.25)\",,,True,,,,,0,,False,,,,,0,0,0,0,\"\",,\"\",\"IEC61850\",\"C:\\\\Users\\\\user\\\\Desktop\\\\anasistech\\\\maramg\\\\ice61850.prj\",,0,,0,False,,,1,False,0,0", "IEvents,\"ObjectEvents\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.OnStartRunning\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.OnStopRunning\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.OnCommError\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.OnCommErrorEx\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.BeforeStart\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.AfterStart\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.BeforeStop\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.AfterStop\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.OnTagRead\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,", "IEvent,\"ObjectEvents.OnTagWrite\",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,"];
+  /* 欄位值為「原始字元」（字串含雙引號、反斜線已跳脫），路徑相關欄位於產生時覆寫 */
+  const TM = {
+    folder: {ObjectType: 'IOFolder', ExposeToOpc: '0', IsAlarmArea: 'False'},
+    tag: {ObjectType: 'IOTag', AdviseType: '1', AllowRead: 'True', AllowWrite: 'True', DeviceHigh: '1000', DeviceLow: '0', DocString: '"IEC61850 Data or DataAttribute"', EnableDeadband: 'True', EnableDriverEvent: 'False', EnableScaling: 'False', EU: '""', EUHigh: '1000', EULow: '0', IsAlarmArea: 'False', N1: '0', N2: '0', N3: '0', N4: '0', PercentDeadband: '0', Scan: '1000', UseBitFields: 'False'},
+    block: {ObjectType: 'IOBlock', AdviseType: '1', AllowRead: 'True', AllowWrite: 'False', B1: '0', B2: '0', B3: '0', B4: '0', DocString: '"Command Block Status"', EnableDeadband: 'True', EnableDriverEvent: 'False', IsAlarmArea: 'False', Scan: '1000', Size: '2'},
+    el: {ObjectType: 'IOBlockElement', DeviceHigh: '1000', DeviceLow: '0', EnableDriverEvent: 'False', EnableScaling: 'False', EU: '""', EUHigh: '1000', EULow: '0', IsAlarmArea: 'False', PercentDeadband: '0', UseBitFields: 'False'}
+  };
+  const q = s => '"' + String(s).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+  const unq = s => (s && s[0] === '"') ? s.slice(1, -1).replace(/\\(.)/g, '$1') : (s || '');
+  /** Elipse CSV 一列 → 原始 token（保留引號），反斜線跳脫的引號不視為結尾 */
+  function tokens(line){
+    const out = []; let i = 0; const n = line.length;
+    for (;;) {
+      let j;
+      if (line[i] === '"') { j = i + 1; while (j < n && line[j] !== '"') j += line[j] === '\\' ? 2 : 1; out.push(line.slice(i, j + 1)); i = j + 1; }
+      else { j = line.indexOf(',', i); if (j < 0) j = n; out.push(line.slice(i, j)); i = j; }
+      if (i >= n) break;
+      i++; if (i === n) { out.push(''); break; }
+    }
+    return out;
+  }
+  /** 讀取 Elipse 匯出的 CSV 作為範本：表頭、Driver 列與 Driver 層事件列 */
+  function parseTemplate(text){
+    const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter(x => x.length);
+    if (!lines.length || !/^ObjectType,Name,/.test(lines[0])) throw new Error(t('el.badTpl'));
+    const header = lines[0].split(',');
+    const prefix = [];
+    for (let i = 1; i < lines.length; i++) { const tk = tokens(lines[i]); if (tk[0] === 'IOFolder' || tk[0] === 'IOTag') break; prefix.push(tk); }
+    const drv = prefix.find(tk => tk[0] === 'IODriver');
+    if (!drv) throw new Error(t('el.noDrv'));
+    const col = h => header.indexOf(h);
+    return {header, prefix, driverName: unq(drv[col('PathName')]), prjPath: unq(drv[col('PathVolume')]), driverDesc: unq(drv[col('DriverName')])};
+  }
+  function builtin(){
+    const lines = BUILTIN_PREFIX;
+    return {header: lines[0].split(','), prefix: lines.slice(1).map(tokens), builtin: true};
+  }
+
+  const topDA = n => { while (n && n.kind === 'BDA') n = n.parent; return n && n.kind === 'DA' ? n : null; };
+
+  /**
+   * opt: {mode:'excel'|'filtered', qt, dataSets:'none'|'wl'|'all', driverName, prjPath, tpl}
+   * 回傳 {text, stats, warns}
+   */
+  function build(M, entries, R, opt){
+    const L = M.leaves, N = L.length;
+    const sel = new Uint8Array(N);
+    const warns = [];
+    if (opt.mode === 'filtered' && R) { for (let i = 0; i < N; i++) if (R.st[i]) sel[i] = 1; }
+    else for (const e of entries) {
+      if (!(e.status === 'matched' || (e.status === 'ambiguous' && opt.ambiguous === 'keep'))) continue;
+      for (const r of e.results) for (let i = r.node.leafStart; i < r.node.leafEnd; i++) if (!r.fc || L[i].fc === r.fc) sel[i] = 1;
+    }
+    if (opt.qt) for (let i = 0; i < N; i++) {
+      if (!sel[i]) continue; const d = topDA(L[i]);
+      if (!d || (d.fc !== 'ST' && d.fc !== 'MX') || d.name === 'q' || d.name === 't') continue;
+      for (const nm of ['q', 't']) { const s = SCL.child(d.parent, nm); if (s && s.fc === d.fc) for (let k = s.leafStart; k < s.leafEnd; k++) sel[k] = 1; }
+    }
+    /* 控制：CO 下任何被選取的 leaf → 該 DO 產生一個 Operate Tag + <DO>_Stat IOBlock（Elipse 匯入 ICD 時的作法） */
+    const coDO = new Set(); const sboDO = [];
+    for (let i = 0; i < N; i++) if (sel[i] && L[i].fc === 'CO') { const d = topDA(L[i]); if (d) coDO.add(d.parent); }
+    for (const d of coDO) if (SCL.child(d, 'SBOw') || SCL.child(d, 'SBO')) sboDO.push(SCL.dotPath(d));
+    if (sboDO.length) warns.push(t('el.wSbo', {n: sboDO.length, ex: sboDO.slice(0, 5).join(', ')}));
+    const noOper = [...coDO].filter(d => !SCL.child(d, 'Oper')).map(d => SCL.dotPath(d));
+    if (noOper.length) warns.push(t('el.wNoOper', {n: noOper.length, ex: noOper.slice(0, 5).join(', ')}));
+
+    /* subtree 內是否有被選取的 leaf（可限定 FC） */
+    const ps = new Int32Array(N + 1); for (let i = 0; i < N; i++) ps[i + 1] = ps[i] + sel[i];
+    const has = (n, fc) => { if (!fc) return ps[n.leafEnd] - ps[n.leafStart] > 0; for (let i = n.leafStart; i < n.leafEnd; i++) if (sel[i] && L[i].fc === fc) return true; return false; };
+
+    const tpl = opt.tpl || builtin();
+    const H = tpl.header, col = new Map(H.map((h, i) => [h, i]));
+    const drv = opt.driverName || 'IEC61850';
+    const vol = q(opt.prjPath || '');
+    const out = [H.join(',')];
+    const counts = {folder: 0, tag: 0, oper: 0, block: 0, arr: 0};
+    const emit = (base, o) => {
+      const a = new Array(H.length).fill('');
+      for (const [k, v] of Object.entries(base)) if (col.has(k)) a[col.get(k)] = v;
+      for (const [k, v] of Object.entries(o)) if (col.has(k)) a[col.get(k)] = v;
+      out.push(a.join(','));
+    };
+    const events = (name, isTag) => {
+      out.push(pad('IEvents', name + '.ObjectEvents'));
+      for (const ev of ['OnStartRunning', 'OnStopRunning'].concat(isTag ? ['OnRead'] : [])) out.push(pad('IEvent', name + '.ObjectEvents.' + ev));
+    };
+    const pad = (type, name) => { const a = new Array(H.length).fill(''); a[0] = type; a[col.get('Name')] = q(name); return a.join(','); };
+    const common = name => ({Name: q(name), PathContainer: q(drv), PathName: q(drv + '.' + name), PathVolume: vol});
+    const folder = (name, doc, dev) => { emit(TM.folder, Object.assign(common(name), {DocString: q(doc), ParamDevice: q(dev)})); events(name, false); counts.folder++; };
+    const tag = (name, dev, item, leaf) => {
+      if (leaf && leaf.count) counts.arr++;
+      emit(TM.tag, Object.assign(common(name), {ParamDevice: q(dev), ParamItem: q(item)})); events(name, true); counts.tag++;
+    };
+    const NODE_DOC = 'IEC61850 Logical Node, FC or Data';
+
+    /* 前置列：Driver 與 Driver 層事件（Driver 名稱 / PRJ 路徑以目前設定覆寫） */
+    for (const tk of tpl.prefix) {
+      const a = H.map((_, i) => tk[i] || '');
+      if (a[0] === 'IODriver') { if (col.has('PathName')) a[col.get('PathName')] = q(drv); if (col.has('PathVolume')) a[col.get('PathVolume')] = vol; }
+      out.push(a.join(','));
+    }
+
+    /* 依 ICD 順序展開：IED → LD → LN → FC → DO/SDO → DA/BDA */
+    function walk(node, fc, name, item, dev){
+      for (const c of node.children) {
+        if (c.fcs ? !c.fcs.has(fc) : c.fc !== fc) continue;
+        if (!has(c, fc)) continue;
+        const nm = name + '.' + c.name, it = item + '$' + c.name;
+        if (c.leaf) tag(nm, dev, it, c);
+        else { folder(nm, NODE_DOC, dev); walk(c, fc, nm, it, dev); }
+      }
+    }
+    function walkCO(node, name, item, dev){
+      for (const c of node.children) {
+        if (!(c.kind === 'DO' || c.kind === 'SDO') || !c.fcs.has('CO') || !has(c, 'CO')) continue;
+        const nm = name + '.' + c.name, it = item + '$' + c.name;
+        folder(nm, NODE_DOC, dev);
+        if (coDO.has(c)) {
+          if (SCL.child(c, 'Oper')) {
+            emit(TM.tag, Object.assign(common(nm + '.Operate'), {AllowRead: 'False', DocString: q('Operate'), ParamDevice: q(dev), ParamItem: q(it + '$Oper')}));
+            events(nm + '.Operate', true); counts.oper++;
+          }
+          const bn = nm + '.' + c.name + '_Stat';
+          emit(TM.block, Object.assign(common(bn), {ParamDevice: q(dev), ParamItem: q(it)})); events(bn, true); counts.block++;
+          emit(TM.el, Object.assign(common(bn + '.Status'), {DocString: q('Status with result code'), Index: '0'})); events(bn + '.Status', false);
+          emit(TM.el, Object.assign(common(bn + '.StatusText'), {DocString: q('Status Description'), Index: '1'})); events(bn + '.StatusText', false);
+        }
+        walkCO(c, nm, it, dev);
+      }
+    }
+    for (const ied of M.ieds) {
+      const lds = ied.children.filter(ld => has(ld));
+      if (!lds.length) continue;
+      folder(ied.name, 'IEC61850 Device', '');
+      for (const ld of lds) {
+        const dev = ied.name + ':' + ld.ldName, ldn = ied.name + '.' + ld.ldName;
+        folder(ldn, 'IEC61850 Logical Device', dev);
+        for (const ln of ld.children) {
+          if (!has(ln)) continue;
+          const lnn = ldn + '.' + ln.name; folder(lnn, NODE_DOC, dev);
+          const fcs = []; for (let i = ln.leafStart; i < ln.leafEnd; i++) if (sel[i] && !fcs.includes(L[i].fc)) fcs.push(L[i].fc);
+          for (const fc of fcs) {
+            const fn = lnn + '.' + fc; folder(fn, NODE_DOC, dev);
+            if (fc === 'CO') walkCO(ln, fn, ln.name + '$CO', dev);
+            else walk(ln, fc, fn, ln.name + '$' + fc, dev);
+          }
+        }
+        /* DataSets（選用）：與一般 Tag 相同 ParamItem，只是 Elipse 以 DataSet 分類呈現 */
+        if (opt.dataSets !== 'none') {
+          const dss = M.datasets.filter(ds => ds.ld === ld);
+          const plan = [];
+          for (const ds of dss) {
+            const mem = [];
+            for (const f of ds.fcdas) {
+              const r = M.resolve(ied.name, f); if (!r.node) continue;
+              const lst = []; for (let i = r.node.leafStart; i < r.node.leafEnd; i++) if ((!r.fc || L[i].fc === r.fc) && L[i].fc !== 'CO' && (opt.dataSets === 'all' || sel[i])) lst.push(i);
+              if (lst.length) mem.push({f, r, lst});
+            }
+            if (mem.length) plan.push({ds, mem});
+          }
+          if (plan.length) {
+            const dsr = ldn + '.DataSets'; folder(dsr, 'DataSets', dev);
+            for (const {ds, mem} of plan) {
+              const key = ds.ln.name + '$' + ds.name, dn = dsr + '.[' + key + ']'; folder(dn, key, dev);
+              for (const {f, r, lst} of mem) {
+                const base = (f.prefix + f.lnClass + f.lnInst) + '$' + f.fc + '$' + f.doName.split('.').join('$') + (f.daName ? '$' + f.daName.split('.').join('$') : '');
+                const mn = dn + '.[' + base + ']';
+                if (r.node.leaf) { tag(mn, dev, base, r.node); continue; }
+                folder(mn, NODE_DOC, dev);
+                const want = new Set(lst);
+                const sub = (node, name, item) => {
+                  for (const c of node.children) {
+                    let any = false; for (let i = c.leafStart; i < c.leafEnd; i++) if (want.has(i)) { any = true; break; }
+                    if (!any) continue;
+                    if (c.leaf) tag(name + '.' + c.name, dev, item + '$' + c.name, c);
+                    else { folder(name + '.' + c.name, NODE_DOC, dev); sub(c, name + '.' + c.name, item + '$' + c.name); }
+                  }
+                };
+                sub(r.node, mn, base);
+              }
+            }
+          }
+        }
+      }
+    }
+    if (counts.arr) warns.push(t('el.wArr', {n: counts.arr}));
+    const unmatched = entries.filter(e => e.status === 'unmatched' || e.status === 'invalid').length;
+    if (unmatched) warns.push(t('el.wUnm', {n: unmatched}));
+    return {text: out.join('\r\n') + '\r\n', stats: counts, warns, nSel: ps[N]};
+  }
+  return {build, parseTemplate, tokens};
+})();
+
+/* =====================================================================
  * Validator — SCL 結構與參照檢查（不是 XSD Schema 驗證）
  * ===================================================================== */
 const Validator = (() => {
@@ -1914,6 +2163,7 @@ function renderExport(){
   const R = S.R; const msg = $('#dlMsg');
   $('#btnCsvMatch').disabled = !(S.M && S.rows);
   $('#btnCsvTags').disabled = !S.M; $('#btnCsvVal').disabled = !S.M;
+  $('#btnElipse').disabled = !(S.M && S.rows);
   if (!R) { $('#btnDl').disabled = true; msg.innerHTML = ''; return; }
   if (R.blocking.length) { $('#btnDl').disabled = true; msg.innerHTML = `<span class="c-err">${esc(t('dl.block', {n: R.blocking.length}))}<br>${esc(R.blocking[0].msg)}</span>`; return; }
   if (R.stats.kept === 0) { $('#btnDl').disabled = true; msg.innerHTML = `<span class="c-err">${esc(t('dl.none'))}</span>`; return; }
@@ -1949,6 +2199,33 @@ $('#btnCsvVal').addEventListener('click', () => {
   for (const x of S.valRows) rows.push([x.level, t(x.src === 'new' ? 'src.new' : 'src.pre'), x.code, x.msg]);
   rows.push([]); rows.push([t('csv.scope'), '', '', t('csv.scopeD')]);
   download(baseName() + '_validation.csv', toCsv(rows), 'text/csv;charset=utf-8');
+});
+
+/* ---- Elipse CSV ---- */
+setStatus('#elTplStatus', () => t('el.tplNone'), '');
+$('#inElPrj').addEventListener('change', () => { const el = $('#inElPrj'); el.value = el.value.trim().replace(/^["']+|["']+$/g, '').trim(); });
+try { const v = localStorage.getItem('icdfilter.elPrj'); if (v) $('#inElPrj').value = v; const d = localStorage.getItem('icdfilter.elDrv'); if (d) $('#inElDrv').value = d; } catch (e) {}
+$('#fElTpl').addEventListener('change', async ev => {
+  const f = ev.target.files[0]; if (!f) { S.elTpl = null; setStatus('#elTplStatus', () => t('el.tplNone'), ''); return; }
+  try {
+    const tpl = Elipse.parseTemplate(new TextDecoder('utf-8').decode(await f.arrayBuffer()));
+    S.elTpl = tpl; $('#inElDrv').value = tpl.driverName; $('#inElPrj').value = tpl.prjPath;
+    setStatus('#elTplStatus', () => t('el.tplOk', {d: tpl.driverDesc, n: tpl.driverName}), 'ok');
+  } catch (e) { S.elTpl = null; const m = e.message; setStatus('#elTplStatus', () => '✖ ' + m, 'err'); }
+});
+$('#btnElipse').addEventListener('click', () => {
+  if (!S.M) return;
+  const prj = $('#inElPrj').value.trim().replace(/^["']+|["']+$/g, '').trim();
+  $('#inElPrj').value = prj;
+  if (!prj) { $('#elMsg').innerHTML = `<span class="c-err">${esc(t('el.noPrj'))}</span>`; return; }
+  try {
+    const r = Elipse.build(S.M, S.entries, S.R, {mode: $('#selElMode').value, qt: $('#optElQt').checked, dataSets: $('#selElDs').value,
+      ambiguous: $('#optAmb').value, driverName: $('#inElDrv').value.trim(), prjPath: prj, tpl: S.elTpl});
+    download(baseName() + '_Elipse.csv', new Blob([r.text], {type: 'text/csv'}));
+    $('#elMsg').innerHTML = `<span class="c-keep">${esc(t('el.ok', r.stats))}</span>` + r.warns.map(w => `<br><span class="c-dep">⚠ ${esc(w)}</span>`).join('');
+    S.elLast = r;
+    try { localStorage.setItem('icdfilter.elPrj', prj); localStorage.setItem('icdfilter.elDrv', $('#inElDrv').value.trim()); } catch (e) {}
+  } catch (e) { console.error(e); $('#elMsg').innerHTML = `<span class="c-err">✖ ${esc(e.message)}</span>`; }
 });
 
 /* ---- 分頁 ---- */
